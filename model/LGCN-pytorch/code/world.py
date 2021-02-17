@@ -14,9 +14,10 @@ from parse import parse_args
 import multiprocessing
 
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
+# os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 args = parse_args()
 
-ROOT_PATH = r"C:\Users\anded\Desktop\LightGCN-PyTorch-master"
+ROOT_PATH = r"C:\Users\and87\Desktop\10.sem\thesis_code\model\LGCN-pytorch"
 CODE_PATH = join(ROOT_PATH, 'code')
 DATA_PATH = join(ROOT_PATH, 'data')
 BOARD_PATH = join(CODE_PATH, 'runs')
@@ -30,8 +31,8 @@ if not os.path.exists(FILE_PATH):
 
 
 config = {}
-all_dataset = ['lastfm', 'gowalla', 'yelp2018', 'amazon-book']
-all_models  = ['mf', 'lgn', 'fm']
+all_dataset = ['lastfm', 'gowalla', 'yelp2018', 'amazon-book', 'mlfm']
+all_models  = ['mf', 'lgn', 'fm', 'cfm']
 # config['batch_size'] = 4096
 config['bpr_batch_size'] = args.bpr_batch
 config['latent_dim_rec'] = args.recdim
@@ -48,7 +49,7 @@ config['A_split'] = False
 config['bigdata'] = False
 
 GPU = torch.cuda.is_available()
-device = torch.device('cuda' if torch.cuda.is_available() else "cpu")
+device = torch.device('cpu')
 CORES = multiprocessing.cpu_count() // 2
 seed = args.seed
 

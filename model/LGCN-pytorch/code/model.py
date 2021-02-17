@@ -283,3 +283,77 @@ class BasicFM(BasicModel):
         pos_emb_ego = self.embedding_item(pos_items)
         neg_emb_ego = self.embedding_item(neg_items)
         return users_emb, pos_emb, neg_emb, users_emb_ego, pos_emb_ego, neg_emb_ego
+
+
+class ContextFM(BasicModel):
+    def __init__(self, 
+                 config:dict, 
+                 dataset:BasicDataset):
+        super(ContextFM, self).__init__()
+        self.config = config
+        self.dataset : dataloader.BasicDataset = dataset
+        self.num_users  = self.dataset.n_users
+        self.num_items  = self.dataset.m_items
+        self.num_context = self.dataset.n_context # TODO: Implementer den her
+        n = self.num_users + self.num_items + self.num_context
+        self.latent_dim = self.config['latent_dim_rec']
+        self.lin = nn.Linear(n, 1)
+
+        # TEST
+        self.f = nn.Sigmoid()
+        self.embedding_user = torch.nn.Embedding(
+            num_embeddings=self.num_users, embedding_dim=self.latent_dim)
+        self.embedding_item = torch.nn.Embedding(
+            num_embeddings=self.num_items, embedding_dim=self.latent_dim)
+        self.embedding_context = torch.nn.Embedding(
+            num_embeddings=self.num_context, embedding_dim=self.latent_dim)
+
+        nn.init.xavier_uniform_(self.embedding_user.weight, gain=1)
+        nn.init.xavier_uniform_(self.embedding_item.weight, gain=1)
+        nn.init.xavier_uniform_(self.embedding_context.weight, gain=1)
+#        nn.init.normal_(self.embedding_user.weight, std=0.1)
+#        nn.init.normal_(self.embedding_item.weight, std=0.1)
+
+    def forward(self, x):
+        V = torch.cat([self.embedding_user, self.embedding_item, self.embedding_context])
+        out_1 = torch.matmul(x, V).pow(2).sum(1, keepdim=True)
+        out_2 = torch.matmul(x.pow(2), V.pow(2)).sum(1, keepdim=True)
+
+        out_inter = 0.5 * (out_1 - out_2)
+        out_lin = self.lin(x)
+
+        out = out_inter + out_lin
+        return out
+
+    def getUsersRating(self, users):
+        users = users.long()
+        users_emb = self.embedding_user(users)
+        items_emb = self.embedding_item.weight
+        scores = torch.matmul(users_emb, items_emb.t())
+        return self.f(scores)
+
+    def bpr_loss(self, users, pos, neg):
+        (users_emb, pos_emb, neg_emb, 
+        userEmb0,  posEmb0, negEmb0) = self.getEmbedding(users.long(), pos.long(), neg.long())
+        reg_loss = (1/2)*(userEmb0.norm(2).pow(2) + 
+                         posEmb0.norm(2).pow(2)  +
+                         negEmb0.norm(2).pow(2))/float(len(users))
+        pos_scores = torch.mul(users_emb, pos_emb)
+        pos_scores = torch.sum(pos_scores, dim=1)
+        neg_scores = torch.mul(users_emb, neg_emb)
+        neg_scores = torch.sum(neg_scores, dim=1)
+        
+        loss = torch.mean(torch.nn.functional.softplus(neg_scores - pos_scores))
+        
+        return loss, reg_loss
+
+    def getEmbedding(self, users, pos_items, neg_items):
+        all_users = self.embedding_user.weight
+        all_items = self.embedding_item.weight
+        users_emb = all_users[users]
+        pos_emb = all_items[pos_items]
+        neg_emb = all_items[neg_items]
+        users_emb_ego = self.embedding_user(users)
+        pos_emb_ego = self.embedding_item(pos_items)
+        neg_emb_ego = self.embedding_item(neg_items)
+        return users_emb, pos_emb, neg_emb, users_emb_ego, pos_emb_ego, neg_emb_ego
