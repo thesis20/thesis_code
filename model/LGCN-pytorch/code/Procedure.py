@@ -77,7 +77,7 @@ def Test(dataset, Recmodel, epoch, w=None, multicore=0):
     dataset: utils.BasicDataset
     testDict: dict = dataset.testDict
     # TODO: Changed this to hardcoded
-    Recmodel: model.BasicFM
+    Recmodel: model.BasicModel
     # eval mode with no dropout
     Recmodel = Recmodel.eval()
     max_K = max(world.topks)

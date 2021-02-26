@@ -20,43 +20,44 @@ import world
 from world import cprint
 from time import time
 
+
 class BasicDataset(Dataset):
     def __init__(self):
         print("init dataset")
-    
+
     @property
     def n_users(self):
         raise NotImplementedError
-    
+
     @property
     def m_items(self):
         raise NotImplementedError
-    
+
     @property
     def trainDataSize(self):
         raise NotImplementedError
-    
+
     @property
     def testDict(self):
         raise NotImplementedError
-    
+
     @property
     def allPos(self):
         raise NotImplementedError
-    
+
     def getUserItemFeedback(self, users, items):
         raise NotImplementedError
-    
+
     def getUserPosItems(self, users):
         raise NotImplementedError
-    
+
     def getUserNegItems(self, users):
         """
         not necessary for large dataset
         it's stupid to return all neg items in super large dataset
         """
         raise NotImplementedError
-    
+
     def getSparseGraph(self):
         """
         build a graph in torch.sparse.IntTensor.
@@ -67,50 +68,56 @@ class BasicDataset(Dataset):
         """
         raise NotImplementedError
 
+
 class LastFM(BasicDataset):
     """
     Dataset type for pytorch \n
     Incldue graph information
     LastFM dataset
     """
+
     def __init__(self, path="../data/lastfm"):
         # train or test
         cprint("loading [last fm]")
-        self.mode_dict = {'train':0, "test":1}
-        self.mode    = self.mode_dict['train']
+        self.mode_dict = {'train': 0, "test": 1}
+        self.mode = self.mode_dict['train']
         # self.n_users = 1892
         # self.m_items = 4489
         trainData = pd.read_table(join(path, 'data1.txt'), header=None)
         # print(trainData.head())
-        testData  = pd.read_table(join(path, 'test1.txt'), header=None)
+        testData = pd.read_table(join(path, 'test1.txt'), header=None)
         # print(testData.head())
-        trustNet  = pd.read_table(join(path, 'trustnetwork.txt'), header=None).to_numpy()
+        trustNet = pd.read_table(
+            join(path, 'trustnetwork.txt'), header=None).to_numpy()
         # print(trustNet[:5])
         trustNet -= 1
-        trainData-= 1
+        trainData -= 1
         testData -= 1
-        self.trustNet  = trustNet
+        self.trustNet = trustNet
         self.trainData = trainData
-        self.testData  = testData
+        self.testData = testData
         self.trainUser = np.array(trainData[:][0])
         self.trainUniqueUsers = np.unique(self.trainUser)
         self.trainItem = np.array(trainData[:][1])
         # self.trainDataSize = len(self.trainUser)
-        self.testUser  = np.array(testData[:][0])
+        self.testUser = np.array(testData[:][0])
         self.testUniqueUsers = np.unique(self.testUser)
-        self.testItem  = np.array(testData[:][1])
+        self.testItem = np.array(testData[:][1])
         self.Graph = None
-        print(f"LastFm Sparsity : {(len(self.trainUser) + len(self.testUser))/self.n_users/self.m_items}")
-        
+        print(
+            f"LastFm Sparsity : {(len(self.trainUser) + len(self.testUser))/self.n_users/self.m_items}")
+
         # (users,users)
-        self.socialNet    = csr_matrix((np.ones(len(trustNet)), (trustNet[:,0], trustNet[:,1]) ), shape=(self.n_users,self.n_users))
+        self.socialNet = csr_matrix((np.ones(len(
+            trustNet)), (trustNet[:, 0], trustNet[:, 1])), shape=(self.n_users, self.n_users))
         # (users,items), bipartite graph
-        self.UserItemNet  = csr_matrix((np.ones(len(self.trainUser)), (self.trainUser, self.trainItem) ), shape=(self.n_users,self.m_items)) 
-        
+        self.UserItemNet = csr_matrix((np.ones(len(
+            self.trainUser)), (self.trainUser, self.trainItem)), shape=(self.n_users, self.m_items))
+
         # pre-calculate
         self._allPos = self.getUserPosItems(list(range(self.n_users)))
         self.allNeg = []
-        allItems    = set(range(self.m_items))
+        allItems = set(range(self.m_items))
         for i in range(self.n_users):
             pos = set(self._allPos[i])
             neg = allItems - pos
@@ -120,15 +127,15 @@ class LastFM(BasicDataset):
     @property
     def n_users(self):
         return 1892
-    
+
     @property
     def m_items(self):
         return 4489
-    
+
     @property
     def trainDataSize(self):
         return len(self.trainUser)
-    
+
     @property
     def testDict(self):
         return self.__testDict
@@ -141,22 +148,24 @@ class LastFM(BasicDataset):
         if self.Graph is None:
             user_dim = torch.LongTensor(self.trainUser)
             item_dim = torch.LongTensor(self.trainItem)
-            
+
             first_sub = torch.stack([user_dim, item_dim + self.n_users])
             second_sub = torch.stack([item_dim+self.n_users, user_dim])
             index = torch.cat([first_sub, second_sub], dim=1)
             data = torch.ones(index.size(-1)).int()
-            self.Graph = torch.sparse.IntTensor(index, data, torch.Size([self.n_users+self.m_items, self.n_users+self.m_items]))
+            self.Graph = torch.sparse.IntTensor(index, data, torch.Size(
+                [self.n_users+self.m_items, self.n_users+self.m_items]))
             dense = self.Graph.to_dense()
             D = torch.sum(dense, dim=1).float()
-            D[D==0.] = 1.
+            D[D == 0.] = 1.
             D_sqrt = torch.sqrt(D).unsqueeze(dim=0)
             dense = dense/D_sqrt
             dense = dense/D_sqrt.t()
             index = dense.nonzero()
-            data  = dense[dense >= 1e-9]
+            data = dense[dense >= 1e-9]
             assert len(index) == len(data)
-            self.Graph = torch.sparse.FloatTensor(index.t(), data, torch.Size([self.n_users+self.m_items, self.n_users+self.m_items]))
+            self.Graph = torch.sparse.FloatTensor(index.t(), data, torch.Size(
+                [self.n_users+self.m_items, self.n_users+self.m_items]))
             self.Graph = self.Graph.coalesce().to(world.device)
         return self.Graph
 
@@ -173,7 +182,7 @@ class LastFM(BasicDataset):
             else:
                 test_data[user] = [item]
         return test_data
-    
+
     def getUserItemFeedback(self, users, items):
         """
         users:
@@ -185,34 +194,33 @@ class LastFM(BasicDataset):
         """
         # print(self.UserItemNet[users, items])
         return np.array(self.UserItemNet[users, items]).astype('uint8').reshape((-1, ))
-    
+
     def getUserPosItems(self, users):
         posItems = []
         for user in users:
             posItems.append(self.UserItemNet[user].nonzero()[1])
         return posItems
-    
+
     def getUserNegItems(self, users):
         negItems = []
         for user in users:
             negItems.append(self.allNeg[user])
         return negItems
-            
-    
-    
+
     def __getitem__(self, index):
         user = self.trainUniqueUsers[index]
         # return user_id and the positive items of the user
         return user
-    
+
     def switch2test(self):
         """
         change dataset mode to offer test data to dataloader
         """
         self.mode = self.mode_dict['test']
-    
+
     def __len__(self):
         return len(self.trainUniqueUsers)
+
 
 class Loader(BasicDataset):
     """
@@ -221,7 +229,7 @@ class Loader(BasicDataset):
     gowalla dataset
     """
 
-    def __init__(self,config = world.config,path="../data/gowalla"):
+    def __init__(self, config=world.config, path="../data/gowalla"):
         # train or test
         cprint(f'loading [{path}]')
         self.split = config['A_split']
@@ -271,7 +279,7 @@ class Loader(BasicDataset):
         self.testUniqueUsers = np.array(testUniqueUsers)
         self.testUser = np.array(testUser)
         self.testItem = np.array(testItem)
-        
+
         self.Graph = None
         print(f"{self.trainDataSize} interactions for training")
         print(f"{self.testDataSize} interactions for testing")
@@ -292,15 +300,15 @@ class Loader(BasicDataset):
     @property
     def n_users(self):
         return self.n_user
-    
+
     @property
     def m_items(self):
         return self.m_item
-    
+
     @property
     def trainDataSize(self):
         return self.traindataSize
-    
+
     @property
     def testDict(self):
         return self.__testDict
@@ -309,7 +317,7 @@ class Loader(BasicDataset):
     def allPos(self):
         return self._allPos
 
-    def _split_A_hat(self,A):
+    def _split_A_hat(self, A):
         A_fold = []
         fold_len = (self.n_users + self.m_items) // self.folds
         for i_fold in range(self.folds):
@@ -318,7 +326,8 @@ class Loader(BasicDataset):
                 end = self.n_users + self.m_items
             else:
                 end = (i_fold + 1) * fold_len
-            A_fold.append(self._convert_sp_mat_to_sp_tensor(A[start:end]).coalesce().to(world.device))
+            A_fold.append(self._convert_sp_mat_to_sp_tensor(
+                A[start:end]).coalesce().to(world.device))
         return A_fold
 
     def _convert_sp_mat_to_sp_tensor(self, X):
@@ -328,7 +337,7 @@ class Loader(BasicDataset):
         index = torch.stack([row, col])
         data = torch.FloatTensor(coo.data)
         return torch.sparse.FloatTensor(index, data, torch.Size(coo.shape))
-        
+
     def getSparseGraph(self):
         print("loading adjacency matrix")
         if self.Graph is None:
@@ -336,22 +345,23 @@ class Loader(BasicDataset):
                 pre_adj_mat = sp.load_npz(self.path + '/s_pre_adj_mat.npz')
                 print("successfully loaded...")
                 norm_adj = pre_adj_mat
-            except :
+            except:
                 print("generating adjacency matrix")
                 s = time()
-                adj_mat = sp.dok_matrix((self.n_users + self.m_items, self.n_users + self.m_items), dtype=np.float32)
+                adj_mat = sp.dok_matrix(
+                    (self.n_users + self.m_items, self.n_users + self.m_items), dtype=np.float32)
                 adj_mat = adj_mat.tolil()
                 R = self.UserItemNet.tolil()
                 adj_mat[:self.n_users, self.n_users:] = R
                 adj_mat[self.n_users:, :self.n_users] = R.T
                 adj_mat = adj_mat.todok()
                 # adj_mat = adj_mat + sp.eye(adj_mat.shape[0])
-                
+
                 rowsum = np.array(adj_mat.sum(axis=1))
                 d_inv = np.power(rowsum, -0.5).flatten()
                 d_inv[np.isinf(d_inv)] = 0.
                 d_mat = sp.diags(d_inv)
-                
+
                 norm_adj = d_mat.dot(adj_mat)
                 norm_adj = norm_adj.dot(d_mat)
                 norm_adj = norm_adj.tocsr()
@@ -405,3 +415,117 @@ class Loader(BasicDataset):
     #     for user in users:
     #         negItems.append(self.allNeg[user])
     #     return negItems
+
+
+class MovieLensFM(BasicDataset):
+    def __init__(self, config=world.config, path="../data/movielens/ml-100k"):
+        print("MovieLens for FM")
+        self.n_user = 0
+        self.m_item = 0
+        train_file = path + '/train.txt'
+        test_file = path + '/test.txt'
+        self.path = path
+
+        train_df = pd.read_csv(train_file)
+        self.traindataSize = len(train_df.index)
+        self.trainUniqueUsers = np.array(train_df.userId.unique())
+        self.trainItem = np.array(train_df['movieId'].tolist())
+        self.trainUser = np.array(train_df['userId'].tolist())
+
+        self.trainContext = np.array(train_df['age'].tolist())
+
+        test_df = pd.read_csv(test_file)
+        self.testDataSize = len(test_df.index)
+        self.testUniqueUsers = np.array(test_df.userId.unique())
+        self.testItem = np.array(test_df['movieId'].tolist())
+        self.testUser = np.array(test_df['userId'].tolist())
+
+        self.testContext = np.array(test_df['age'].tolist())
+
+        self.merged_df = train_df.append(test_df)
+        self.n_user = self.merged_df['userId'].nunique()
+        self.m_item = self.merged_df['movieId'].nunique()
+        self.__testDict = self.__build_test()
+
+        print(self.merged_df.head())
+        # Get contexts
+
+        self._n_context = len(self.merged_df['age'].unique())
+        #self.n_context = len(self.merged_df['gender']) \
+        #    + len(self.merged_df['age']) \
+        #    + len(self.merged_df['occupation']) \
+        #    + len(self.merged_df['zipcode']) \
+        #    + len(self.merged_df['timestamp']) 
+
+        self.n_user += 1
+        self.m_item += 1
+        # user-item bipartite graph
+        self.UserItemNet = csr_matrix((np.ones(len(self.trainUser)), (self.trainUser, self.trainItem)),
+                                      shape=(self.n_user, self.m_item))
+        # pre-calculate
+        self._allPos = self.getUserPosItems(list(range(self.n_user)))
+        self.__testDict = self.__build_test()
+
+    @property
+    def n_users(self):
+        return 944  # TODO: Should probably not be hardcoded
+
+    @property
+    def m_items(self):
+        return 1683  # TODO: Should probably not be hardcoded
+
+    @property
+    def n_context(self):
+        return self._n_context
+
+    @property
+    def trainDataSize(self):
+        return self.traindataSize
+
+    @property
+    def testDict(self):
+        return self.__testDict
+
+    @property
+    def allPos(self):
+        return self._allPos
+
+    def getUserItemFeedback(self, users, items):
+        raise NotImplementedError
+
+    def getUserPosItems(self, users):
+        posItems = []
+        for user in users:
+            posItems.append(self.UserItemNet[user].nonzero()[1])
+        return posItems
+
+    def getUserNegItems(self, users):
+        """
+        not necessary for large dataset
+        it's stupid to return all neg items in super large dataset
+        """
+        raise NotImplementedError
+
+    def getSparseGraph(self):
+        """
+        build a graph in torch.sparse.IntTensor.
+        Details in NGCF's matrix form
+        A = 
+            |I,   R|
+            |R^T, I|
+        """
+        raise NotImplementedError
+
+    def __build_test(self):
+        """
+        return:
+            dict: {user: [items]}
+        """
+        test_data = {}
+        for i, item in enumerate(self.testItem):
+            user = self.testUser[i]
+            if test_data.get(user):
+                test_data[user].append(item)
+            else:
+                test_data[user] = [item]
+        return test_data
