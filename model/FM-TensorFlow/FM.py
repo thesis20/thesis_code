@@ -42,7 +42,7 @@ class FM():
 
             # POsitive item
             positive_embeddings = tf.concat([self.user_feature_embeddings, self.positive_feature_embeddings], -1)
-            pos_first_term = tf.square(positive_embedding)
+            pos_first_term = tf.square(self.X, positive_embedding)
             pos_second_term = tf.sparse_tensor_dense_matmul(tf.square(self.X), tf.square(positive_embedding))
 
             pos_pred = 0.5 * tf.reduce_sum(tf.subtract(pos_first_term, pos_second_term), 1)
