@@ -1,6 +1,8 @@
 import tensorflow as tf
 from LoadData import LoadMovieLens
 import random
+import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 class FM():
     def __init__(self, emb_dim, epochs, batch_size, learning_rate):
@@ -11,7 +13,6 @@ class FM():
         self.batch_size = batch_size
         self.learning_rate = learning_rate
         self.random_seed = 2021
-        self.optimizer = tf.train.AdamOptimizer()
         self._init_graph()
 
     def _init_graph(self):
@@ -24,8 +25,8 @@ class FM():
             self.y = tf.placeholder(dtype=tf.float32)
 
             self.user_features = tf.placeholder(tf.int32, shape=[None, None])
-            self.positive_features = tf.placeholder(tf.int32, shape=[None, None])
-            self.negative_features = tf.placeholder(tf.int32, shape=[None, None])
+            self.pos_features = tf.placeholder(tf.int32, shape=[None, None])
+            self.neg_features = tf.placeholder(tf.int32, shape=[None, None])
 
             # w is amount of features (input dimension) by output dimension
             self.w = tf.Variable(tf.truncated_normal([self.data.field_sizes, 1], mean=0.0, stddev=0.1, dtype=tf.float32), dtype=tf.float32)
@@ -34,32 +35,41 @@ class FM():
             self.w0 = tf.Variable(tf.zeros(1, dtype=tf.float32), dtype=tf.float32)
             
             self.user_feature_embeddings = tf.nn.embedding_lookup(self.v, self.user_features)
-            self.positive_feature_embeddings = tf.nn.embedding_lookup(self.v, self.positive_features)
-            self.negative_feature_embeddings = tf.nn.embedding_lookup(self.v, self.negative_features)
+            self.pos_feature_embeddings = tf.nn.embedding_lookup(self.v, self.pos_features)
+            self.neg_feature_embeddings = tf.nn.embedding_lookup(self.v, self.neg_features)
             self.user_feature_bias = tf.nn.embedding_lookup(self.w, self.user_features)
-            self.pos_item_feature_bias = tf.nn.embedding_lookup(self.w, self.positive_features)
-            self.neg_item_feature_bias = tf.nn.embedding_lookup(self.w, self.negative_features)
+            self.pos_item_feature_bias = tf.nn.embedding_lookup(self.w, self.pos_features)
+            self.neg_item_feature_bias = tf.nn.embedding_lookup(self.w, self.neg_features)
 
             # POsitive item
-            positive_embeddings = tf.concat([self.user_feature_embeddings, self.positive_feature_embeddings], -1)
-            pos_first_term = tf.square(self.X, positive_embedding)
-            pos_second_term = tf.sparse_tensor_dense_matmul(tf.square(self.X), tf.square(positive_embedding))
+            pos_embeddings = tf.concat([self.user_feature_embeddings, self.pos_feature_embeddings], 1)
+            pos_embeddings_sum = tf.reduce_sum(pos_embeddings, 1)
+            pos_first_term = tf.square(pos_embeddings_sum)
+            pos_embeddings_sq = tf.square(pos_embeddings)
+            pos_second_term = tf.reduce_sum(pos_embeddings_sq, 1)
 
             pos_pred = 0.5 * tf.reduce_sum(tf.subtract(pos_first_term, pos_second_term), 1)
 
-            pos_y_hat = self.w0 + tf.sparse_tensor_dense_matmul(self.X, self.w) + pos_pred
+            pos_y_hat = self.w0 + tf.reduce_sum(self.pos_item_feature_bias, 1) + pos_pred
 
             # NEgative item
-            negative_embedding = tf.concat([self.user_feature_embeddings, self.negative_feature_embeddings], -1)
-            neg_first_term = tf.square(tf.sparse_tensor_dense_matmul(self.X, negative_embedding))
-            neg_second_term = tf.sparse_tensor_dense_matmul(tf.square(self.X), tf.square(negative_embedding))
+            neg_embeddings = tf.concat([self.user_feature_embeddings, self.neg_feature_embeddings], 1)
+            neg_embeddings_sum = tf.reduce_sum(neg_embeddings, 1)
+            neg_first_term = tf.square(neg_embeddings_sum)
+            neg_embeddings_sq = tf.square(neg_embeddings)
+            neg_second_term = tf.reduce_sum(neg_embeddings_sq, 1)
 
             neg_pred = 0.5 * tf.reduce_sum(tf.subtract(neg_first_term, neg_second_term), 1)
 
-            neg_y_hat = self.w0 + tf.sparse_tensor_dense_matmul(self.X, self.w) + neg_pred
+            neg_y_hat = self.w0 + tf.reduce_sum(self.neg_item_feature_bias, 1) + neg_pred
 
-            self.loss = tf.reduce_sum(-tf.log(tf.sigmoid(pos_y_hat - neg_y_hat)))
-            
+            self.loss_func = -tf.log(tf.sigmoid(pos_y_hat - neg_y_hat))
+            self.loss_func = tf.reduce_sum(self.loss_func)
+
+            self.optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate,
+                                                    beta1=0.9, beta2=0.999,
+                                                    epsilon=1e-8).minimize(self.loss_func)
+
             self.saver = tf.train.Saver()
             init = tf.global_variables_initializer()
             self.sess = tf.Session()
@@ -106,21 +116,27 @@ class FM():
             
             neg_movie_index = self.data.lookup_dict['movieId' + str(sample['movieId'].to_numpy()[0])]
             neg_item = [neg_movie_index] + _get_genre_indexes(sample)
+            neg_interactions.append(neg_item)
 
-        return { 'user_ids': user_ids, 'pos_interaction': pos_interactions, 'neg_interaction': neg_interactions }
+        # Add padding to genre lists to make sure all movies have the same amount of genres (padded)
+        longest_genre_list = max(len(max(neg_interactions)), len(max(pos_interactions)))
+        
+        for index, pos_int in enumerate(pos_interactions):
+            pos_interactions[index] = (pos_interactions[index] + longest_genre_list * [0])[:longest_genre_list]
 
-    def bpr_loss(user, pos, neg):
-        raise NotImplementedError
+        for index, neg_int in enumerate(neg_interactions):
+            neg_interactions[index] = (neg_interactions[index] + longest_genre_list * [0])[:longest_genre_list]
+
+        return { 'user_ids': user_ids, 'pos_interactions': pos_interactions, 'neg_interactions': neg_interactions }
+
     
     def train(self):
         for epoch in range(1, self.epochs + 1):
-            loss = 0.0
             batch = self.sampler()
             feed_dict = {self.user_features: batch['user_ids'],
-                         self.positive_features: batch['pos_interactions'],
-                         self.negative_features: batch['neg_interactions']}
-            batch_loss, opt = self.sess.run({self.loss, self.optimizer}, feed_dict=feed_dict)
-            loss += batch_loss
-            logger.info("the total loss in %d th iteration is: %f" % (epoch, loss))
+                         self.pos_features: batch['pos_interactions'],
+                         self.neg_features: batch['neg_interactions']}
+            batch_loss, opt = self.sess.run((self.loss_func, self.optimizer), feed_dict=feed_dict)
+            print(f"the total loss in {epoch}th iteration is: {batch_loss}")
 
-fm = FM(emb_dim=64, epochs=10, batch_size=8, learning_rate=0.001)
+fm = FM(emb_dim=64, epochs=1000, batch_size=64, learning_rate=0.001).train()
