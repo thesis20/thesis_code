@@ -53,7 +53,9 @@ class LoadMovieLens():
         
         self.item_fields = self.full_data['movieId'].nunique() + genre_count
 
+
         self.lookup_dict = lookup_dict
+        self.field_sizes = len(self.lookup_dict)
 
     def one_hot(self):
         train_col = []
@@ -84,5 +86,3 @@ class LoadMovieLens():
 
         self.lil_train = coo_train.tolil()
         self.lil_test = coo_test.tolil()
-
-data = LoadMovieLens()
