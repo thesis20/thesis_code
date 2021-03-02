@@ -21,31 +21,33 @@ class FM():
         with self.graph.as_default():
             if self.random_seed is not None:
                 tf.set_random_seed(self.random_seed)
-            self.X = tf.sparse_placeholder(dtype=tf.float32, shape=[None, None])
-            self.y = tf.placeholder(dtype=tf.float32)
 
             self.user_features = tf.placeholder(tf.int32, shape=[None, None])
             self.pos_features = tf.placeholder(tf.int32, shape=[None, None])
             self.neg_features = tf.placeholder(tf.int32, shape=[None, None])
 
             # w is amount of features (input dimension) by output dimension
-            self.w = tf.Variable(
-                tf.random_normal([self.data.field_sizes, 1], mean=0.0, stddev=0.1),
-                name='w', trainable=True)
-            self.v = tf.Variable(
-                tf.random_normal([self.data.field_sizes, self.emb_dim], mean=0.0, stddev=0.1),
-                name='v', trainable=True)
+            self.weights = dict()
+            self.weights['user_feature_bias'] = tf.Variable(
+                tf.random_uniform([self.data.user_fields, 1], 0.0, 0.1),
+                name='user_feature_bias')
+            self.weights['item_feature_bias'] = tf.Variable(
+                tf.random_uniform([self.data.item_fields, 1], 0.0, 0.1),
+                name='item_feature_bias')
+            self.weights['user_feature_embeddings'] = tf.Variable(
+                tf.random_normal([self.data.user_fields, self.emb_dim], 0.0, 0.1),
+                name='user_feature_embeddings')
+            self.weights['item_feature_embeddings'] = tf.Variable(
+                tf.random_normal([self.data.item_fields, self.emb_dim], 0.0, 0.1),
+                name='item_feature_embeddings')
             print("i am initializing")
-            # w0 or b (global bias)
-            self.w0 = tf.Variable(tf.zeros([1,1], dtype=tf.float32),
-                                  name='w0', trainable=True)
             
-            self.user_feature_embeddings = tf.nn.embedding_lookup(self.v, self.user_features)
-            self.pos_feature_embeddings = tf.nn.embedding_lookup(self.v, self.pos_features)
-            self.neg_feature_embeddings = tf.nn.embedding_lookup(self.v, self.neg_features)
-            self.user_feature_bias_sum = tf.reduce_sum(tf.nn.embedding_lookup(self.w, self.user_features), 1)
-            self.pos_item_feature_bias_sum = tf.reduce_sum(tf.nn.embedding_lookup(self.w, self.pos_features), 1)
-            self.neg_item_feature_bias_sum = tf.reduce_sum(tf.nn.embedding_lookup(self.w, self.neg_features), 1)
+            self.user_feature_embeddings = tf.nn.embedding_lookup(self.weights['user_feature_embeddings'], self.user_features)
+            self.pos_feature_embeddings = tf.nn.embedding_lookup(self.weights['item_feature_embeddings'], self.pos_features)
+            self.neg_feature_embeddings = tf.nn.embedding_lookup(self.weights['item_feature_embeddings'], self.neg_features)
+            self.user_feature_bias_sum = tf.reduce_sum(tf.nn.embedding_lookup(self.weights['user_feature_bias'], self.user_features), 1)
+            self.pos_item_feature_bias_sum = tf.reduce_sum(tf.nn.embedding_lookup(self.weights['item_feature_bias'], self.pos_features), 1)
+            self.neg_item_feature_bias_sum = tf.reduce_sum(tf.nn.embedding_lookup(self.weights['item_feature_bias'], self.neg_features), 1)
 
             # POsitive item
             self.user_embeddings_sum = tf.reduce_sum(self.user_feature_embeddings, 1)
@@ -59,9 +61,11 @@ class FM():
             self.pos_item_embeddings_sq_sum = tf.reduce_sum(self.pos_item_embeddings_sq, 1)
             self.pos_second_term = tf.add(self.user_embeddings_sq_sum, self.pos_item_embeddings_sq_sum)
 
-            self.pos_pred = 0.5 * tf.reduce_sum(tf.subtract(self.pos_first_term, self.pos_second_term), 1, keepdims=True)
+            self.pos_pred = 0.5 * tf.subtract(self.pos_first_term, self.pos_second_term)
+            self.bipos = tf.reduce_sum(self.pos_pred, 1, keepdims=True)
 
-            self.pos_y_hat = tf.add_n([self.user_feature_bias_sum, self.pos_item_feature_bias_sum, self.pos_pred])
+            self.pos_y_hat = tf.add_n([self.bipos, self.user_feature_bias_sum, self.pos_item_feature_bias_sum])
+            #self.pos_y_hat = tf.nn.dropout(self.pos_y_hat, 0.5)
 
             # NEgative item
             self.neg_item_embeddings_sum = tf.reduce_sum(self.neg_feature_embeddings, 1)
@@ -72,14 +76,17 @@ class FM():
             self.neg_item_embeddings_sq_sum = tf.reduce_sum(self.neg_item_embeddings_sq, 1)
             self.neg_second_term = tf.add(self.user_embeddings_sq_sum, self.neg_item_embeddings_sq_sum)
             
-            self.neg_pred = 0.5 * tf.reduce_sum(tf.subtract(self.neg_first_term, self.neg_second_term), 1, keepdims=True)
+            self.neg_pred = 0.5 * tf.subtract(self.neg_first_term, self.neg_second_term)
+            self.bineg = tf.reduce_sum(self.neg_pred, 1, keepdims=True)
 
-            self.neg_y_hat = tf.add_n([self.user_feature_bias_sum, self.neg_item_feature_bias_sum, self.neg_pred])
+            self.neg_y_hat = tf.add_n([self.bineg, self.user_feature_bias_sum, self.neg_item_feature_bias_sum])
+            #self.neg_y_hat = tf.nn.dropout(self.neg_y_hat, 0.5)
 
             self.loss_func = -tf.log(tf.sigmoid(self.pos_y_hat - self.neg_y_hat))
             self.loss_func = tf.reduce_sum(self.loss_func)
 
             self.optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate).minimize(self.loss_func)
+            # self.optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.1).minimize(self.loss_func)
             # self.optimizer = tf.train.AdagradOptimizer(learning_rate=0.01).minimize(self.loss_func)
 
             # self.saver = tf.train.Saver()
@@ -98,20 +105,20 @@ class FM():
                         'thriller', 'war', 'western']
             for genre in genres:
                 if row[genre].to_numpy()[0] == 1:
-                    genre_indexes.append(self.data.lookup_dict[genre + str(1)])
+                    genre_indexes.append(self.data.item_feature_dict[genre + str(1)])
             return genre_indexes
 
         user_ids, pos_interactions, neg_interactions = [], [], []
         while len(user_ids) < self.batch_size:
-            rand_row = self.data.train_df.sample()
+            rand_row = self.data.train_df.sample(random_state=42)
             userId = rand_row['userId'].to_numpy()[0]
-            userId_index = self.data.lookup_dict['userId' + str(userId)]
-            age_index = self.data.lookup_dict['age' + str(rand_row['age'].to_numpy()[0])]
-            gender_index = self.data.lookup_dict['gender' + str(rand_row['gender'].to_numpy()[0])]
-            occupation_index = self.data.lookup_dict['occupation' + str(rand_row['occupation'].to_numpy()[0])]
-            zipcode_index = self.data.lookup_dict['zipcode' + str(rand_row['zipcode'].to_numpy()[0])]
+            userId_index = self.data.user_feature_dict['userId' + str(userId)]
+            age_index = self.data.user_feature_dict['age' + str(rand_row['age'].to_numpy()[0])]
+            gender_index = self.data.user_feature_dict['gender' + str(rand_row['gender'].to_numpy()[0])]
+            occupation_index = self.data.user_feature_dict['occupation' + str(rand_row['occupation'].to_numpy()[0])]
+            zipcode_index = self.data.user_feature_dict['zipcode' + str(rand_row['zipcode'].to_numpy()[0])]
             movieId = rand_row['movieId'].to_numpy()[0]
-            movieId_index = self.data.lookup_dict['movieId' + str(rand_row['movieId'].to_numpy()[0])]
+            movieId_index = self.data.item_feature_dict['movieId' + str(rand_row['movieId'].to_numpy()[0])]
 
 
             user = [userId_index, age_index, gender_index, occupation_index, zipcode_index]
@@ -122,11 +129,11 @@ class FM():
             # Sample negative item
             user_pos_items = self.data.train_df[self.data.train_df['userId'] == userId]['movieId'].unique()
             
-            sample = self.data.train_df.sample()
+            sample = self.data.train_df.sample(random_state=42)
             while sample.to_numpy()[0] in user_pos_items:
-                sample = self.data.train_df.sample()
+                sample = self.data.train_df.sample(random_state=42)
             
-            neg_movie_index = self.data.lookup_dict['movieId' + str(sample['movieId'].to_numpy()[0])]
+            neg_movie_index = self.data.item_feature_dict['movieId' + str(sample['movieId'].to_numpy()[0])]
             neg_item = [neg_movie_index] + _get_genre_indexes(sample)
             neg_interactions.append(neg_item)
 
@@ -157,4 +164,5 @@ class FM():
                 total_loss += batch_loss
             print(f"the total loss in {epoch}th iteration is: {batch_loss}")
 
-fm = FM(emb_dim=64, epochs=1000, batch_size=95, learning_rate=0.001).train()
+fm = FM(emb_dim=64, epochs=1000, batch_size=95, learning_rate=0.01)
+fm.train()
