@@ -6,7 +6,6 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 class FM():
     def __init__(self, emb_dim, epochs, batch_size, learning_rate):
-        tf.enable_eager_execution()
         self.data = LoadMovieLens()
         self.emb_dim = emb_dim
         self.epochs = epochs
@@ -14,6 +13,7 @@ class FM():
         self.learning_rate = learning_rate
         self.random_seed = 2021
         self._init_graph()
+        random.seed(self.random_seed)
 
     def _init_graph(self):
         self.graph = tf.Graph()
@@ -29,48 +29,60 @@ class FM():
             self.neg_features = tf.placeholder(tf.int32, shape=[None, None])
 
             # w is amount of features (input dimension) by output dimension
-            self.w = tf.Variable(tf.truncated_normal([self.data.field_sizes, 1], mean=0.0, stddev=0.1, dtype=tf.float32), dtype=tf.float32)
-            self.v = tf.Variable(tf.truncated_normal([self.data.field_sizes, self.emb_dim], mean=0.0, stddev=0.1, dtype=tf.float32), dtype=tf.float32)
+            self.w = tf.Variable(
+                tf.random_normal([self.data.field_sizes, 1], mean=0.0, stddev=0.1),
+                name='w', trainable=True)
+            self.v = tf.Variable(
+                tf.random_normal([self.data.field_sizes, self.emb_dim], mean=0.0, stddev=0.1),
+                name='v', trainable=True)
+            print("i am initializing")
             # w0 or b (global bias)
-            self.w0 = tf.Variable(tf.zeros(1, dtype=tf.float32), dtype=tf.float32)
+            self.w0 = tf.Variable(tf.zeros([1,1], dtype=tf.float32),
+                                  name='w0', trainable=True)
             
             self.user_feature_embeddings = tf.nn.embedding_lookup(self.v, self.user_features)
             self.pos_feature_embeddings = tf.nn.embedding_lookup(self.v, self.pos_features)
             self.neg_feature_embeddings = tf.nn.embedding_lookup(self.v, self.neg_features)
-            self.user_feature_bias = tf.nn.embedding_lookup(self.w, self.user_features)
-            self.pos_item_feature_bias = tf.nn.embedding_lookup(self.w, self.pos_features)
-            self.neg_item_feature_bias = tf.nn.embedding_lookup(self.w, self.neg_features)
+            self.user_feature_bias_sum = tf.reduce_sum(tf.nn.embedding_lookup(self.w, self.user_features), 1)
+            self.pos_item_feature_bias_sum = tf.reduce_sum(tf.nn.embedding_lookup(self.w, self.pos_features), 1)
+            self.neg_item_feature_bias_sum = tf.reduce_sum(tf.nn.embedding_lookup(self.w, self.neg_features), 1)
 
             # POsitive item
-            pos_embeddings = tf.concat([self.user_feature_embeddings, self.pos_feature_embeddings], 1)
-            pos_embeddings_sum = tf.reduce_sum(pos_embeddings, 1)
-            pos_first_term = tf.square(pos_embeddings_sum)
-            pos_embeddings_sq = tf.square(pos_embeddings)
-            pos_second_term = tf.reduce_sum(pos_embeddings_sq, 1)
+            self.user_embeddings_sum = tf.reduce_sum(self.user_feature_embeddings, 1)
+            self.pos_item_embeddings_sum = tf.reduce_sum(self.pos_feature_embeddings, 1)
+            self.pos_embeddings_sum = tf.add(self.user_embeddings_sum, self.pos_item_embeddings_sum)
+            self.pos_first_term = tf.square(self.pos_embeddings_sum)
+            
+            self.user_embeddings_sq = tf.square(self.user_feature_embeddings)
+            self.user_embeddings_sq_sum = tf.reduce_sum(self.user_embeddings_sq, 1)
+            self.pos_item_embeddings_sq = tf.square(self.pos_feature_embeddings)
+            self.pos_item_embeddings_sq_sum = tf.reduce_sum(self.pos_item_embeddings_sq, 1)
+            self.pos_second_term = tf.add(self.user_embeddings_sq_sum, self.pos_item_embeddings_sq_sum)
 
-            pos_pred = 0.5 * tf.reduce_sum(tf.subtract(pos_first_term, pos_second_term), 1)
+            self.pos_pred = 0.5 * tf.reduce_sum(tf.subtract(self.pos_first_term, self.pos_second_term), 1, keepdims=True)
 
-            pos_y_hat = self.w0 + tf.reduce_sum(self.pos_item_feature_bias, 1) + pos_pred
+            self.pos_y_hat = tf.add_n([self.user_feature_bias_sum, self.pos_item_feature_bias_sum, self.pos_pred])
 
             # NEgative item
-            neg_embeddings = tf.concat([self.user_feature_embeddings, self.neg_feature_embeddings], 1)
-            neg_embeddings_sum = tf.reduce_sum(neg_embeddings, 1)
-            neg_first_term = tf.square(neg_embeddings_sum)
-            neg_embeddings_sq = tf.square(neg_embeddings)
-            neg_second_term = tf.reduce_sum(neg_embeddings_sq, 1)
+            self.neg_item_embeddings_sum = tf.reduce_sum(self.neg_feature_embeddings, 1)
+            self.neg_embeddings_sum = tf.add(self.user_embeddings_sum, self.neg_item_embeddings_sum)
+            self.neg_first_term = tf.square(self.neg_embeddings_sum)
+            
+            self.neg_item_embeddings_sq = tf.square(self.neg_feature_embeddings)
+            self.neg_item_embeddings_sq_sum = tf.reduce_sum(self.neg_item_embeddings_sq, 1)
+            self.neg_second_term = tf.add(self.user_embeddings_sq_sum, self.neg_item_embeddings_sq_sum)
+            
+            self.neg_pred = 0.5 * tf.reduce_sum(tf.subtract(self.neg_first_term, self.neg_second_term), 1, keepdims=True)
 
-            neg_pred = 0.5 * tf.reduce_sum(tf.subtract(neg_first_term, neg_second_term), 1)
+            self.neg_y_hat = tf.add_n([self.user_feature_bias_sum, self.neg_item_feature_bias_sum, self.neg_pred])
 
-            neg_y_hat = self.w0 + tf.reduce_sum(self.neg_item_feature_bias, 1) + neg_pred
-
-            self.loss_func = -tf.log(tf.sigmoid(pos_y_hat - neg_y_hat))
+            self.loss_func = -tf.log(tf.sigmoid(self.pos_y_hat - self.neg_y_hat))
             self.loss_func = tf.reduce_sum(self.loss_func)
 
-            self.optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate,
-                                                    beta1=0.9, beta2=0.999,
-                                                    epsilon=1e-8).minimize(self.loss_func)
+            self.optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate).minimize(self.loss_func)
+            # self.optimizer = tf.train.AdagradOptimizer(learning_rate=0.01).minimize(self.loss_func)
 
-            self.saver = tf.train.Saver()
+            # self.saver = tf.train.Saver()
             init = tf.global_variables_initializer()
             self.sess = tf.Session()
             self.sess.run(init)
@@ -131,12 +143,18 @@ class FM():
 
     
     def train(self):
-        for epoch in range(1, self.epochs + 1):
-            batch = self.sampler()
-            feed_dict = {self.user_features: batch['user_ids'],
-                         self.pos_features: batch['pos_interactions'],
-                         self.neg_features: batch['neg_interactions']}
-            batch_loss, opt = self.sess.run((self.loss_func, self.optimizer), feed_dict=feed_dict)
+        for epoch in range(0, self.epochs):
+            total_loss = 0
+            total_batch = int(self.data.n_users / self.batch_size)
+
+            
+            for i in range(total_batch):
+                batch = self.sampler()
+                feed_dict = {self.user_features: batch['user_ids'],
+                            self.pos_features: batch['pos_interactions'],
+                            self.neg_features: batch['neg_interactions']}
+                batch_loss, _ = self.sess.run((self.loss_func, self.optimizer), feed_dict=feed_dict)
+                total_loss += batch_loss
             print(f"the total loss in {epoch}th iteration is: {batch_loss}")
 
-fm = FM(emb_dim=64, epochs=1000, batch_size=64, learning_rate=0.001).train()
+fm = FM(emb_dim=64, epochs=1000, batch_size=95, learning_rate=0.001).train()
