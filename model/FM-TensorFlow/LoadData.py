@@ -15,9 +15,10 @@ class LoadMovieLens():
         self.count_dimensions()
         self.n_train_users, self.n_test_users, self.n_users = self.user_counter()
         self.n_train_items, self.n_test_items, self.n_items = self.item_counter()
+        self.n_interactions = len(self.train_df.index)
         print(f"n_users: {self.n_users}")
         print(f"n_items: {self.n_items}")
-        self.one_hot()
+        # self.one_hot()
 
     def user_counter(self):
         train_users = self.train_df['userId'].nunique()
