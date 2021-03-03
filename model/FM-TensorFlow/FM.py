@@ -2,10 +2,12 @@ import tensorflow as tf
 from LoadData import LoadMovieLens
 import random
 import os
+import numpy as np
+from evaluation import evaluator
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 class FM():
-    def __init__(self, emb_dim, epochs, batch_size, learning_rate):
+    def __init__(self, emb_dim, epochs, batch_size, learning_rate, topk):
         self.data = LoadMovieLens()
         self.emb_dim = emb_dim
         self.epochs = epochs
@@ -14,6 +16,8 @@ class FM():
         self.random_seed = 2021
         self._init_graph()
         random.seed(self.random_seed)
+        self.topk = topk
+        self.evaluator = evaluator()
         
         
 
@@ -105,14 +109,10 @@ class FM():
         # TODO: Refactor this
         def _get_genre_indexes(row):
             genre_indexes = []
-            genres = ['unknown', 'action', 'adventure', 'animation',
-                        'childrens', 'comedy', 'crime', 'documentary',
-                        'drama', 'fantasy',  'film-noir', 'horror',
-                        'musical', 'mystery', 'romance', 'scifi',
-                        'thriller', 'war', 'western']
+            genres = self.data.genrelist
             for genre in genres:
                 if row[genre].to_numpy()[0] == 1:
-                    genre_indexes.append(self.data.item_feature_dict[genre + str(1)])
+                    genre_indexes.append(self.data.item_feature_index_dict[genre + str(1)])
             return genre_indexes
 
         user_ids, pos_interactions, neg_interactions = [], [], []
@@ -120,13 +120,13 @@ class FM():
             random_value = random.randint(0, self.data.n_interactions)
             rand_row = self.data.train_df.sample(random_state=random_value)
             userId = rand_row['userId'].to_numpy()[0]
-            userId_index = self.data.user_feature_dict['userId' + str(userId)]
-            age_index = self.data.user_feature_dict['age' + str(rand_row['age'].to_numpy()[0])]
-            gender_index = self.data.user_feature_dict['gender' + str(rand_row['gender'].to_numpy()[0])]
-            occupation_index = self.data.user_feature_dict['occupation' + str(rand_row['occupation'].to_numpy()[0])]
-            zipcode_index = self.data.user_feature_dict['zipcode' + str(rand_row['zipcode'].to_numpy()[0])]
+            userId_index = self.data.user_feature_index_dict['userId' + str(userId)]
+            age_index = self.data.user_feature_index_dict['age' + str(rand_row['age'].to_numpy()[0])]
+            gender_index = self.data.user_feature_index_dict['gender' + str(rand_row['gender'].to_numpy()[0])]
+            occupation_index = self.data.user_feature_index_dict['occupation' + str(rand_row['occupation'].to_numpy()[0])]
+            zipcode_index = self.data.user_feature_index_dict['zipcode' + str(rand_row['zipcode'].to_numpy()[0])]
             movieId = rand_row['movieId'].to_numpy()[0]
-            movieId_index = self.data.item_feature_dict['movieId' + str(rand_row['movieId'].to_numpy()[0])]
+            movieId_index = self.data.item_feature_index_dict['movieId' + str(rand_row['movieId'].to_numpy()[0])]
 
 
             user = [userId_index, age_index, gender_index, occupation_index, zipcode_index]
@@ -144,7 +144,7 @@ class FM():
                 random_sample_value = random.randint(0, self.data.n_interactions)
                 sample = self.data.train_df.sample(random_state=random_sample_value)
             
-            neg_movie_index = self.data.item_feature_dict['movieId' + str(sample['movieId'].to_numpy()[0])]
+            neg_movie_index = self.data.item_feature_index_dict['movieId' + str(sample['movieId'].to_numpy()[0])]
             neg_item = [neg_movie_index] + _get_genre_indexes(sample)
             neg_interactions.append(neg_item)
 
@@ -174,5 +174,30 @@ class FM():
                 total_loss += loss
             print(f"the total loss in {epoch}th iteration is: {total_loss}")
 
-fm = FM(emb_dim=64, epochs=1000, batch_size=95, learning_rate=0.01)
+            if epoch % 10 == 0:
+                self.evaluate_now()
+            
+    def evaluate_now(self):
+        self.graph.finalize()
+
+        scores = dict()
+        for user in self.data.test_df['userId'].unique():
+            user_features = self.data.user_feature_dict[user]
+            item_features_list = []
+            user_features_list = []
+            for item in self.data.test_df['movieId'].unique():
+                item_features = self.data.item_feature_dict[item]
+                item_features_list.append(item_features)
+                user_features_list.append(user_features)
+                
+            feed_dict = {self.user_features: user_features_list, self.pos_features: item_features_list}
+            pos_scores = self.sess.run((self.pos_y_hat), feed_dict=feed_dict)
+            pos_scores = pos_scores.reshape(self.data.n_test_items)
+            scores[user] = pos_scores
+        
+        self.evaluator.evaluate(scores, self.data.user_ground_truth_dict, self.topk)
+
+        
+
+fm = FM(emb_dim=64, epochs=1000, batch_size=95, learning_rate=0.01, topk=20)
 fm.train()
