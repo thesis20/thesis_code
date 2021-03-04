@@ -66,10 +66,10 @@ class evaluator():
         print(f"NDCG: {ndcg_value}")
         
         f = open("results.txt", "a")
-        line = "P: " + precision_value + " "
-        line += "R: " + recall_value + " "
-        line += "F1: " + f1_value + " "
-        line += "NDCG: " + ndcg_value + "\n"
+        line = "P: " + str(precision_value) + " "
+        line += "R: " + str(recall_value) + " "
+        line += "F1: " + str(f1_value) + " "
+        line += "NDCG: " + str(ndcg_value) + "\n"
         f.write(line)
         f.close()
 
