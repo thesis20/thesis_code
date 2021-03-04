@@ -111,7 +111,7 @@ class FM():
             genre_indexes = []
             genres = self.data.genrelist
             for genre in genres:
-                if row[genre].to_numpy()[0] == 1:
+                if np.array(row[genre])[0] == 1:
                     genre_indexes.append(self.data.item_feature_index_dict[genre + str(1)])
             return genre_indexes
 
@@ -119,14 +119,14 @@ class FM():
         while len(user_ids) < self.batch_size:
             random_value = random.randint(0, self.data.n_interactions)
             rand_row = self.data.train_df.sample(random_state=random_value)
-            userId = rand_row['userId'].to_numpy()[0]
+            userId = np.array(rand_row['userId'])[0]
             userId_index = self.data.user_feature_index_dict['userId' + str(userId)]
-            age_index = self.data.user_feature_index_dict['age' + str(rand_row['age'].to_numpy()[0])]
-            gender_index = self.data.user_feature_index_dict['gender' + str(rand_row['gender'].to_numpy()[0])]
-            occupation_index = self.data.user_feature_index_dict['occupation' + str(rand_row['occupation'].to_numpy()[0])]
-            zipcode_index = self.data.user_feature_index_dict['zipcode' + str(rand_row['zipcode'].to_numpy()[0])]
-            movieId = rand_row['movieId'].to_numpy()[0]
-            movieId_index = self.data.item_feature_index_dict['movieId' + str(rand_row['movieId'].to_numpy()[0])]
+            age_index = self.data.user_feature_index_dict['age' + str(np.array(rand_row['age'])[0])]
+            gender_index = self.data.user_feature_index_dict['gender' + str(np.array(rand_row['gender'])[0])]
+            occupation_index = self.data.user_feature_index_dict['occupation' + str(np.array(rand_row['occupation'])[0])]
+            zipcode_index = self.data.user_feature_index_dict['zipcode' + str(np.array(rand_row['zipcode'])[0])]
+            movieId = np.array(rand_row['movieId'])[0]
+            movieId_index = self.data.item_feature_index_dict['movieId' + str(np.array(rand_row['movieId'])[0])]
 
 
             user = [userId_index, age_index, gender_index, occupation_index, zipcode_index]
@@ -140,11 +140,11 @@ class FM():
             random_sample_value = random.randint(0, self.data.n_interactions)
             sample = self.data.train_df.sample(random_state=random_sample_value)
             
-            while sample['movieId'].to_numpy()[0] in user_pos_items:
+            while np.array(sample['movieId'])[0] in user_pos_items:
                 random_sample_value = random.randint(0, self.data.n_interactions)
                 sample = self.data.train_df.sample(random_state=random_sample_value)
             
-            neg_movie_index = self.data.item_feature_index_dict['movieId' + str(sample['movieId'].to_numpy()[0])]
+            neg_movie_index = self.data.item_feature_index_dict['movieId' + str(np.array(sample['movieId'])[0])]
             neg_item = [neg_movie_index] + _get_genre_indexes(sample)
             neg_interactions.append(neg_item)
 
