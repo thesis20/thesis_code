@@ -19,7 +19,7 @@ class LoadMovieLens():
         self.test_file = self.path + "test.txt"
         self.load_data() # Load train_df, test_df and full_data
         self.count_dimensions()
-        self.user_feature_dict, self.item_feature_dict, self.user_ground_truth_dict = self.build_dictionaries()
+        self.build_dictionaries()
         self.n_train_users, self.n_test_users, self.n_users = self.user_counter()
         self.n_train_items, self.n_test_items, self.n_items = self.item_counter()
         self.n_interactions = len(self.train_df.index)
@@ -116,6 +116,8 @@ class LoadMovieLens():
         user_feature_dict = dict()
         item_feature_dict = dict()
         user_ground_truth_dict = dict()
+        train_set_user_pos_interactions = dict()
+        train_set_user_neg_interactions = dict()
         
         for index, row in self.full_df.iterrows():
             user_feature_indexes = []
@@ -139,14 +141,29 @@ class LoadMovieLens():
             item_feature_dict[key] = (value + longest_genre_list * [0])[:longest_genre_list]
 
 
-        for index, row in self.test_df.iterrows():
+        for _, row in self.test_df.iterrows():
             if row['userId'] not in user_ground_truth_dict:
                 user_ground_truth_dict[row['userId']] = [row['movieId']]
             else:
                 if row['movieId'] not in user_ground_truth_dict[row['userId']]:
                     user_ground_truth_dict[row['userId']].append(row['movieId'])
-
-        return user_feature_dict, item_feature_dict, user_ground_truth_dict
+        
+        for _, row in self.train_df.iterrows():
+            if row['userId'] not in train_set_user_pos_interactions:
+                train_set_user_pos_interactions[row['userId']] = [row['movieId']]
+            else:
+                if row['movieId'] not in train_set_user_pos_interactions[row['userId']]:
+                    train_set_user_pos_interactions[row['userId']].append(row['movieId'])
+        
+        unique_train_items = self.train_df['movieId'].unique()
+        for key, value in train_set_user_pos_interactions.items():
+            train_set_user_neg_interactions[key] = list(set(unique_train_items).difference(value))
+        
+        self.user_feature_dict = user_feature_dict
+        self.item_feature_dict = item_feature_dict
+        self.user_ground_truth_dict = user_ground_truth_dict
+        self.train_set_user_pos_interactions = train_set_user_pos_interactions
+        self.train_set_user_neg_interactions = train_set_user_neg_interactions
 
     def one_hot(self):
         train_col = []

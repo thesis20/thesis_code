@@ -113,55 +113,20 @@ class FM():
             
     def sampler(self):
         # TODO: Refactor this
-        def _get_genre_indexes(row):
-            genre_indexes = []
-            genres = self.data.genrelist
-            for genre in genres:
-                if np.array(row[genre])[0] == 1:
-                    genre_indexes.append(self.data.item_feature_index_dict[genre + str(1)])
-            return genre_indexes
 
         user_ids, pos_interactions, neg_interactions = [], [], []
         while len(user_ids) < self.batch_size:
-            random_value = random.randint(0, self.data.n_interactions)
-            rand_row = self.data.train_df.sample(random_state=random_value)
-            userId = np.array(rand_row['userId'])[0]
-            userId_index = self.data.user_feature_index_dict['userId' + str(userId)]
-            age_index = self.data.user_feature_index_dict['age' + str(np.array(rand_row['age'])[0])]
-            gender_index = self.data.user_feature_index_dict['gender' + str(np.array(rand_row['gender'])[0])]
-            occupation_index = self.data.user_feature_index_dict['occupation' + str(np.array(rand_row['occupation'])[0])]
-            zipcode_index = self.data.user_feature_index_dict['zipcode' + str(np.array(rand_row['zipcode'])[0])]
-            movieId = np.array(rand_row['movieId'])[0]
-            movieId_index = self.data.item_feature_index_dict['movieId' + str(np.array(rand_row['movieId'])[0])]
-
-
-            user = [userId_index, age_index, gender_index, occupation_index, zipcode_index]
-            user_ids.append(user)
-            movie = [movieId_index] + _get_genre_indexes(rand_row)
-            pos_interactions.append(movie)
-
-            # Sample negative item
-            user_pos_items = self.data.train_df[self.data.train_df['userId'] == userId]['movieId'].unique()
+            # random user
+            # random pos item
+            # random neg item
             
-            random_sample_value = random.randint(0, self.data.n_interactions)
-            sample = self.data.train_df.sample(random_state=random_sample_value)
+            userId = random.choice(list(self.data.train_set_user_pos_interactions.keys()))
+            pos = random.sample(self.data.train_set_user_pos_interactions[userId], 1)[0]
+            neg = random.sample(self.data.train_set_user_neg_interactions[userId], 1)[0]
             
-            while np.array(sample['movieId'])[0] in user_pos_items:
-                random_sample_value = random.randint(0, self.data.n_interactions)
-                sample = self.data.train_df.sample(random_state=random_sample_value)
-            
-            neg_movie_index = self.data.item_feature_index_dict['movieId' + str(np.array(sample['movieId'])[0])]
-            neg_item = [neg_movie_index] + _get_genre_indexes(sample)
-            neg_interactions.append(neg_item)
-
-        # Add padding to genre lists to make sure all movies have the same amount of genres (padded)
-        longest_genre_list = max(len(max(neg_interactions)), len(max(pos_interactions)))
-        
-        for index, pos_int in enumerate(pos_interactions):
-            pos_interactions[index] = (pos_interactions[index] + longest_genre_list * [0])[:longest_genre_list]
-
-        for index, neg_int in enumerate(neg_interactions):
-            neg_interactions[index] = (neg_interactions[index] + longest_genre_list * [0])[:longest_genre_list]
+            user_ids.append(self.data.user_feature_dict[userId])
+            pos_interactions.append(self.data.item_feature_dict[pos])
+            neg_interactions.append(self.data.item_feature_dict[neg])
 
         return { 'user_ids': user_ids, 'pos_interactions': pos_interactions, 'neg_interactions': neg_interactions }
 
@@ -204,10 +169,10 @@ class FM():
         
         self.evaluator.evaluate(scores, self.data.user_ground_truth_dict, self.topk)
 
-        
+
 emb_dim=64
 batch_size=95
-lr = 0.01
+lr = 0.1
 epochs=1000
 path = 'pretrain-FM-%s-emb%d-lr%d-bs%d-e%d' % ('movielens100k', emb_dim, lr, batch_size, epochs)
 fm = FM(emb_dim=emb_dim, epochs=epochs, batch_size=batch_size, learning_rate=lr, topk=20, savefile_path=path)
