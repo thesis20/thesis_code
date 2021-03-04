@@ -36,10 +36,10 @@ class evaluator():
         return recall
 
     def f1(self, precision, recall):
-        if precision or recall is 0.0:
+        try:
+            return (2.0*float(precision)*float(recall)) / (float(precision) + float(recall))
+        except:
             return 0.0
-        else:
-            return (2*precision*recall) / (precision + recall)
 
     def evaluate(self, score_dict, ground_truth_dict, topk):
         sorted_scores = {}

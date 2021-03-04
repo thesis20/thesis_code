@@ -7,26 +7,27 @@ from evaluation import evaluator
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 class FM():
-    def __init__(self, emb_dim, epochs, batch_size, learning_rate, topk):
+    def __init__(self, emb_dim, epochs, batch_size, learning_rate, topk, savefile_path):
+        self.use_dropout = True
+        self.random_seed = 2016
         self.data = LoadMovieLens()
         self.emb_dim = emb_dim
         self.epochs = epochs
         self.batch_size = batch_size
         self.learning_rate = learning_rate
-        self.random_seed = 2021
         self._init_graph()
         random.seed(self.random_seed)
         self.topk = topk
         self.evaluator = evaluator()
-        
+        self.savefile_path = savefile_path
         
 
-    def _init_graph(self):   
+    def _init_graph(self):
+        
         self.graph = tf.Graph()
            
-        with self.graph.as_default() as graphyboi:
-            if self.random_seed is not None:
-                tf.set_random_seed(self.random_seed)
+        with self.graph.as_default():
+            tf.set_random_seed(self.random_seed)
                 
             self.user_features = tf.placeholder(tf.int32, shape=[None, None])
             self.pos_features = tf.placeholder(tf.int32, shape=[None, None])
@@ -34,18 +35,18 @@ class FM():
 
             # w is amount of features (input dimension) by output dimension
             self.weights = dict()
-            self.weights['user_feature_bias'] = tf.Variable(
-                tf.random_uniform([self.data.user_fields, 1], 0.0, 0.1),
-                name='user_feature_bias')
-            self.weights['item_feature_bias'] = tf.Variable(
-                tf.random_uniform([self.data.item_fields, 1], 0.0, 0.1),
-                name='item_feature_bias')
             self.weights['user_feature_embeddings'] = tf.Variable(
                 tf.random_normal([self.data.user_fields, self.emb_dim], 0.0, 0.1),
                 name='user_feature_embeddings')
             self.weights['item_feature_embeddings'] = tf.Variable(
                 tf.random_normal([self.data.item_fields, self.emb_dim], 0.0, 0.1),
                 name='item_feature_embeddings')
+            self.weights['user_feature_bias'] = tf.Variable(
+                tf.random_uniform([self.data.user_fields, 1], 0.0, 0.1),
+                name='user_feature_bias')
+            self.weights['item_feature_bias'] = tf.Variable(
+                tf.random_uniform([self.data.item_fields, 1], 0.0, 0.1),
+                name='item_feature_bias')
             
             self.user_feature_embeddings = tf.nn.embedding_lookup(self.weights['user_feature_embeddings'],
                                                                   self.user_features)
@@ -60,25 +61,27 @@ class FM():
             self.neg_item_feature_bias_sum = tf.reduce_sum(tf.nn.embedding_lookup(self.weights['item_feature_bias'],
                                                                                   self.neg_features), 1)
 
-            # POsitive item
+            # Positive item
             self.user_embeddings_sum = tf.reduce_sum(self.user_feature_embeddings, 1)
             self.pos_item_embeddings_sum = tf.reduce_sum(self.pos_feature_embeddings, 1)
             self.pos_embeddings_sum = tf.add(self.user_embeddings_sum, self.pos_item_embeddings_sum)
             self.pos_first_term = tf.square(self.pos_embeddings_sum)
             
             self.user_embeddings_sq = tf.square(self.user_feature_embeddings)
-            self.user_embeddings_sq_sum = tf.reduce_sum(self.user_embeddings_sq, 1)
             self.pos_item_embeddings_sq = tf.square(self.pos_feature_embeddings)
+            self.user_embeddings_sq_sum = tf.reduce_sum(self.user_embeddings_sq, 1)
             self.pos_item_embeddings_sq_sum = tf.reduce_sum(self.pos_item_embeddings_sq, 1)
             self.pos_second_term = tf.add(self.user_embeddings_sq_sum, self.pos_item_embeddings_sq_sum)
 
             self.pos_pred = 0.5 * tf.subtract(self.pos_first_term, self.pos_second_term)
+            if self.use_dropout:
+                self.pos_pred = tf.nn.dropout(self.pos_pred, 0.8)
+            
             self.bipos = tf.reduce_sum(self.pos_pred, 1, keepdims=True)
 
             self.pos_y_hat = tf.add_n([self.bipos, self.user_feature_bias_sum, self.pos_item_feature_bias_sum])
-            #self.pos_y_hat = tf.nn.dropout(self.pos_y_hat, 0.5)
 
-            # NEgative item
+            # Negative item
             self.neg_item_embeddings_sum = tf.reduce_sum(self.neg_feature_embeddings, 1)
             self.neg_embeddings_sum = tf.add(self.user_embeddings_sum, self.neg_item_embeddings_sum)
             self.neg_first_term = tf.square(self.neg_embeddings_sum)
@@ -88,6 +91,9 @@ class FM():
             self.neg_second_term = tf.add(self.user_embeddings_sq_sum, self.neg_item_embeddings_sq_sum)
             
             self.neg_pred = 0.5 * tf.subtract(self.neg_first_term, self.neg_second_term)
+            if self.use_dropout:
+                self.neg_pred = tf.nn.dropout(self.neg_pred, 0.8)
+            
             self.bineg = tf.reduce_sum(self.neg_pred, 1, keepdims=True)
 
             self.neg_y_hat = tf.add_n([self.bineg, self.user_feature_bias_sum, self.neg_item_feature_bias_sum])
@@ -96,11 +102,11 @@ class FM():
             self.loss = -tf.log(tf.sigmoid(self.pos_y_hat - self.neg_y_hat))
             self.loss = tf.reduce_sum(self.loss)
 
-           # self.optimizer = tf.train.AdagradOptimizer(learning_rate=self.learning_rate, initial_accumulator_value=1e-8).minimize(self.loss)
+            self.optimizer = tf.train.AdagradOptimizer(learning_rate=self.learning_rate, initial_accumulator_value=1e-8).minimize(self.loss)
             # self.optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.1).minimize(self.loss)
-            self.optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate).minimize(self.loss)
+            # self.optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate).minimize(self.loss)
 
-            # self.saver = tf.train.Saver()
+            self.saver = tf.train.Saver()
             init = tf.global_variables_initializer()
             self.sess = tf.Session()
             self.sess.run(init)
@@ -167,17 +173,18 @@ class FM():
     def train(self):
         for epoch in range(0, self.epochs):
             total_loss = 0
-            total_batch = int(self.data.n_users / self.batch_size)
+            total_batch = int(self.data.n_interactions / self.batch_size)
             for i in range(total_batch):
                 batch = self.sampler()
                 loss, _ = self.partial_fit(batch)
                 total_loss += loss
             print(f"the total loss in {epoch}th iteration is: {total_loss}")
 
-            if epoch % 10 == 0:
-                self.evaluate_now()
-            
-    def evaluate_now(self):
+            if epoch > 0 and epoch % 100 == 0:
+                self.evaluate()
+        self.saver.save(self.sess, self.savefile_path)
+    
+    def evaluate(self):
         self.graph.finalize()
 
         scores = dict()
@@ -198,6 +205,10 @@ class FM():
         self.evaluator.evaluate(scores, self.data.user_ground_truth_dict, self.topk)
 
         
-
-fm = FM(emb_dim=64, epochs=1000, batch_size=95, learning_rate=0.01, topk=20)
+emb_dim=64
+batch_size=95
+lr = 0.01
+epochs=1000
+path = 'pretrain-FM-%s-emb%d-lr%d-bs%d-e%d' % ('movielens100k', emb_dim, lr, batch_size, epochs)
+fm = FM(emb_dim=emb_dim, epochs=epochs, batch_size=batch_size, learning_rate=lr, topk=20, savefile_path=path)
 fm.train()

@@ -25,7 +25,36 @@ class LoadMovieLens():
         self.n_interactions = len(self.train_df.index)
         print(f"n_users: {self.n_users}")
         print(f"n_items: {self.n_items}")
+        
+        # self.resave_data()
         # self.one_hot()
+
+    def resave_data(self):
+        line = ""
+        for _, row in self.test_df.iterrows():
+            userId = row['userId']
+            userfeatures = self.user_feature_dict[userId]
+            
+            movieId = row['movieId']
+            moviefeatures = self.item_feature_dict[movieId]
+    
+            for index, feature in enumerate(userfeatures):
+                if index == 0:
+                    line += str(feature)
+                else:
+                    line += "-" + str(feature)
+            line += ','
+
+            for index, feature in enumerate(moviefeatures):
+                if index == 0:
+                    line += str(feature)
+                else:
+                    line += "-" + str(feature)
+            line += '\n'
+            
+        trainfile = open('test.csv', 'w')
+        trainfile.write(line)
+        trainfile.close()
 
     def user_counter(self):
         train_users = self.train_df['userId'].nunique()
@@ -104,7 +133,8 @@ class LoadMovieLens():
                         genres.append(genre_index)
                 item_feature_dict[row['movieId']] = [movie_id_index] + genres
 
-        longest_genre_list = max(item_feature_dict)
+        longest_genre_list = len(item_feature_dict[max(item_feature_dict, key=lambda x: len(item_feature_dict[x]))])
+        test = item_feature_dict[max(item_feature_dict, key=lambda x: len(item_feature_dict[x]))]
         for key, value in item_feature_dict.items():
             item_feature_dict[key] = (value + longest_genre_list * [0])[:longest_genre_list]
 

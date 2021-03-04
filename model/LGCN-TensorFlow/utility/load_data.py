@@ -9,6 +9,7 @@ import numpy as np
 import random as rd
 import scipy.sparse as sp
 from time import time
+import pandas as pd
 
 class Data(object):
     def __init__(self, path, batch_size):
@@ -22,57 +23,59 @@ class Data(object):
         self.n_train, self.n_test = 0, 0
         self.neg_pools = {}
 
-        self.exist_users = []
+        self.exist_users_train = []
+        self.exist_users_test = []
         
-        with open(train_file) as f:
-            for l in f.readlines():
-                if len(l) > 0:
-                    l = l.strip('\n').split(' ')
-                    items = [int(i) for i in l[1:]]
-                    uid = int(l[0])
-                    self.exist_users.append(uid)
-                    self.n_items = max(self.n_items, max(items))
-                    self.n_users = max(self.n_users, uid)
-                    self.n_train += len(items)
-
-        with open(test_file) as f:
-            for l in f.readlines():
-                if len(l) > 0:
-                    l = l.strip('\n')
-                    try:
-                        items = [int(i) for i in l.split(' ')[1:]]
-                    except Exception:
-                        continue
-                    self.n_items = max(self.n_items, max(items))
-                    self.n_test += len(items)
+        # self.n_items = total antal items
+        # self.n_users = total antal users
+        # self.n_train = antal interactions i train data
+        # self.exist_users er liste med user ids
+        # self.n_test = antal interactions in test data
+        train_df = pd.read_csv(train_file)
+        test_df = pd.read_csv(test_file)
+        full_df = train_df.append(test_df)
+        
+        # TODO: Refactor så movieId er itemID?
+        self.n_items = full_df['movieId'].nunique()
+        self.n_users = full_df['userId'].nunique()
+        # dictionaries mapping item and user id from full dataset to an index
+        self.item_id_to_index = {k: v for v, k in enumerate(full_df['movieId'].unique())}
+        self.user_id_to_index = {k: v for v, k in enumerate(full_df['userId'].unique())}
+        self.exist_users_train = train_df['userId'].unique()
+        self.exist_users_test = test_df['userId'].unique()
+        self.n_train = len(train_df.index)
+        self.n_test = len(test_df.index)
+        
+        # TODO: Skal her tælles en op?
         self.n_items += 1
         self.n_users += 1
         self.print_statistics()
         self.R = sp.dok_matrix((self.n_users, self.n_items), dtype=np.float32)
+        
         self.train_items, self.test_set = {}, {}
-        with open(train_file) as f_train:
-            with open(test_file) as f_test:
-                for l in f_train.readlines():
-                    if len(l) == 0: break
-                    l = l.strip('\n')
-                    items = [int(i) for i in l.split(' ')]
-                    uid, train_items = items[0], items[1:]
-
-                    for i in train_items:
-                        self.R[uid, i] = 1.
-                        
-                    self.train_items[uid] = train_items
-                    
-                for l in f_test.readlines():
-                    if len(l) == 0: break
-                    l = l.strip('\n')
-                    try:
-                        items = [int(i) for i in l.split(' ')]
-                    except Exception:
-                        continue
-                    
-                    uid, test_items = items[0], items[1:]
-                    self.test_set[uid] = test_items
+        # Key: userID || value: list of positive interactions
+        # self.R: [uid, i] = 1 for hver interaction
+        
+        for _, row in train_df.iterrows():
+            userId = row['userId']
+            movieId = row['movieId']
+            self.R[
+                self.user_id_to_index[userId],
+                self.item_id_to_index[movieId]
+                ] = 1
+            if userId not in self.train_items:
+                self.train_items[userId] = [movieId]
+            else:
+                self.train_items[userId].append(movieId)
+                
+        for _, row in test_df.iterrows():
+            userId = row['userId']
+            movieId = row['movieId']
+            if userId not in self.test_set:
+                self.test_set[userId] = [movieId]
+            else:
+                self.test_set[userId].append(movieId)
+            
 
     def get_adj_mat(self):
         try:
@@ -155,9 +158,9 @@ class Data(object):
 
     def sample(self):
         if self.batch_size <= self.n_users:
-            users = rd.sample(self.exist_users, self.batch_size)
+            users = rd.sample(self.exist_users_train, self.batch_size)
         else:
-            users = [rd.choice(self.exist_users) for _ in range(self.batch_size)]
+            users = [rd.choice(self.exist_users_train) for _ in range(self.batch_size)]
 
 
         def sample_pos_items_for_u(u, num):
@@ -197,7 +200,7 @@ class Data(object):
         if self.batch_size <= self.n_users:
             users = rd.sample(self.test_set.keys(), self.batch_size)
         else:
-            users = [rd.choice(self.exist_users) for _ in range(self.batch_size)]
+            users = [rd.choice(self.exist_users_test) for _ in range(self.batch_size)]
 
         def sample_pos_items_for_u(u, num):
             pos_items = self.test_set[u]
