@@ -8,8 +8,10 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 class FM():
     def __init__(self, emb_dim, epochs, batch_size, learning_rate, topk, savefile_path):
-        self.use_dropout = True
-        self.random_seed = 2016
+        self.use_dropout = False
+        self.keep_prob = 0.6
+        self.use_l2 = True
+        self.random_seed = 2021
         self.data = LoadMovieLens()
         self.emb_dim = emb_dim
         self.epochs = epochs
@@ -33,20 +35,26 @@ class FM():
             self.pos_features = tf.placeholder(tf.int32, shape=[None, None])
             self.neg_features = tf.placeholder(tf.int32, shape=[None, None])
 
+            initializer = tf.contrib.layers.xavier_initializer()
             # w is amount of features (input dimension) by output dimension
             self.weights = dict()
             self.weights['user_feature_embeddings'] = tf.Variable(
-                tf.random_normal([self.data.user_fields, self.emb_dim], 0.0, 0.1),
+                initializer([self.data.user_fields, self.emb_dim]),
                 name='user_feature_embeddings')
             self.weights['item_feature_embeddings'] = tf.Variable(
-                tf.random_normal([self.data.item_fields, self.emb_dim], 0.0, 0.1),
+                initializer([self.data.item_fields, self.emb_dim]),
                 name='item_feature_embeddings')
             self.weights['user_feature_bias'] = tf.Variable(
-                tf.random_uniform([self.data.user_fields, 1], 0.0, 0.1),
-                name='user_feature_bias')
+                tf.zeros([self.data.user_fields, 1], dtype=tf.float32,
+                name='user_feature_bias'))
             self.weights['item_feature_bias'] = tf.Variable(
-                tf.random_uniform([self.data.item_fields, 1], 0.0, 0.1),
-                name='item_feature_bias')
+                tf.zeros([self.data.item_fields, 1], dtype=tf.float32,
+                name='item_feature_bias'))
+            
+            # w0 removed since global bias is added to both pos_y_hat and negative, cancelling it out
+            # self.weights['w0'] = tf.Variable(
+            #     tf.zeros([1,1]),
+            #     name='w0')
             
             self.user_feature_embeddings = tf.nn.embedding_lookup(self.weights['user_feature_embeddings'],
                                                                   self.user_features)
@@ -61,12 +69,13 @@ class FM():
             self.neg_item_feature_bias_sum = tf.reduce_sum(tf.nn.embedding_lookup(self.weights['item_feature_bias'],
                                                                                   self.neg_features), 1)
 
-            # Positive item
+            # Positive item, first term
             self.user_embeddings_sum = tf.reduce_sum(self.user_feature_embeddings, 1)
             self.pos_item_embeddings_sum = tf.reduce_sum(self.pos_feature_embeddings, 1)
             self.pos_embeddings_sum = tf.add(self.user_embeddings_sum, self.pos_item_embeddings_sum)
             self.pos_first_term = tf.square(self.pos_embeddings_sum)
             
+            # Positive item, second term
             self.user_embeddings_sq = tf.square(self.user_feature_embeddings)
             self.pos_item_embeddings_sq = tf.square(self.pos_feature_embeddings)
             self.user_embeddings_sq_sum = tf.reduce_sum(self.user_embeddings_sq, 1)
@@ -75,36 +84,45 @@ class FM():
 
             self.pos_pred = 0.5 * tf.subtract(self.pos_first_term, self.pos_second_term)
             if self.use_dropout:
-                self.pos_pred = tf.nn.dropout(self.pos_pred, 0.8)
+                self.pos_pred = tf.nn.dropout(self.pos_pred, self.keep_prob)
             
+            # Bilinear interactions for positive interactions
             self.bipos = tf.reduce_sum(self.pos_pred, 1, keepdims=True)
 
+            # Positive prediction (y hat)
             self.pos_y_hat = tf.add_n([self.bipos, self.user_feature_bias_sum, self.pos_item_feature_bias_sum])
-
-            # Negative item
+            #self.pos_y_hat = tf.add(self.weights['w0'], self.pos_y_hat)
+            
+            # Negative item, first term
             self.neg_item_embeddings_sum = tf.reduce_sum(self.neg_feature_embeddings, 1)
             self.neg_embeddings_sum = tf.add(self.user_embeddings_sum, self.neg_item_embeddings_sum)
             self.neg_first_term = tf.square(self.neg_embeddings_sum)
             
+            # Negative item, second term
             self.neg_item_embeddings_sq = tf.square(self.neg_feature_embeddings)
             self.neg_item_embeddings_sq_sum = tf.reduce_sum(self.neg_item_embeddings_sq, 1)
             self.neg_second_term = tf.add(self.user_embeddings_sq_sum, self.neg_item_embeddings_sq_sum)
             
             self.neg_pred = 0.5 * tf.subtract(self.neg_first_term, self.neg_second_term)
             if self.use_dropout:
-                self.neg_pred = tf.nn.dropout(self.neg_pred, 0.8)
+                self.neg_pred = tf.nn.dropout(self.neg_pred, self.keep_prob)
             
+            # Bilinear interactions for negative interactions
             self.bineg = tf.reduce_sum(self.neg_pred, 1, keepdims=True)
 
+            # Negative prediction (y hat)
             self.neg_y_hat = tf.add_n([self.bineg, self.user_feature_bias_sum, self.neg_item_feature_bias_sum])
-            #self.neg_y_hat = tf.nn.dropout(self.neg_y_hat, 0.5)
-
+            
+            #self.neg_y_hat = tf.add(self.weights['w0'], self.neg_y_hat)
+            
+            # BPR Loss
             self.loss = -tf.log(tf.sigmoid(self.pos_y_hat - self.neg_y_hat))
+            if self.use_l2:
+                self.loss = tf.nn.l2_loss(self.loss)
             self.loss = tf.reduce_sum(self.loss)
 
-            self.optimizer = tf.train.AdagradOptimizer(learning_rate=self.learning_rate, initial_accumulator_value=1e-8).minimize(self.loss)
-            # self.optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.1).minimize(self.loss)
-            # self.optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate).minimize(self.loss)
+            # Select optimizer for algorithm, adam requires lower lr than adagrad
+            self.optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate).minimize(self.loss)
 
             self.saver = tf.train.Saver()
             init = tf.global_variables_initializer()
@@ -112,17 +130,17 @@ class FM():
             self.sess.run(init)
             
     def sampler(self):
-        # TODO: Refactor this
+        # Negative sampling, samples a random set of users in train set, finds a
+        # positive and negative interaction for this user.
+        # Repeat for size of batch
 
         user_ids, pos_interactions, neg_interactions = [], [], []
-        while len(user_ids) < self.batch_size:
-            # random user
-            # random pos item
-            # random neg item
-            
-            userId = random.choice(list(self.data.train_set_user_pos_interactions.keys()))
-            pos = random.sample(self.data.train_set_user_pos_interactions[userId], 1)[0]
-            neg = random.sample(self.data.train_set_user_neg_interactions[userId], 1)[0]
+        
+        random_userIds = random.choices(list(self.data.train_set_user_pos_interactions.keys()), k=self.batch_size)
+        
+        for userId in random_userIds:
+            pos = random.choices(list(self.data.train_set_user_pos_interactions[userId]), k=1)[0]
+            neg = random.choices(list(self.data.train_set_user_neg_interactions[userId]), k=1)[0]
             
             user_ids.append(self.data.user_feature_dict[userId])
             pos_interactions.append(self.data.item_feature_dict[pos])
@@ -138,20 +156,18 @@ class FM():
     def train(self):
         for epoch in range(0, self.epochs):
             total_loss = 0
-            total_batch = int(self.data.n_interactions / self.batch_size)
-            for i in range(total_batch):
-                batch = self.sampler()
-                loss, _ = self.partial_fit(batch)
-                total_loss += loss
-            print(f"the total loss in {epoch}th iteration is: {total_loss}")
+            #total_batch = int(self.data.n_interactions / self.batch_size)
+            #for i in range(total_batch):
+            batch = self.sampler()
+            loss, _ = self.partial_fit(batch)
+            total_loss += loss
 
             if epoch > 0 and epoch % 100 == 0:
-                self.evaluate()
+                print(f"the total loss in {epoch}th iteration is: {total_loss}")
+                self.evaluate(epoch)
         self.saver.save(self.sess, self.savefile_path)
     
-    def evaluate(self):
-        self.graph.finalize()
-
+    def evaluate(self, epoch):
         scores = dict()
         for user in self.data.test_df['userId'].unique():
             user_features = self.data.user_feature_dict[user]
@@ -167,13 +183,13 @@ class FM():
             pos_scores = pos_scores.reshape(self.data.n_test_items)
             scores[user] = pos_scores
         
-        self.evaluator.evaluate(scores, self.data.user_ground_truth_dict, self.topk)
+        self.evaluator.evaluate(scores, self.data.user_ground_truth_dict, self.topk, epoch)
 
 
 emb_dim=64
-batch_size=95
-lr = 0.1
+batch_size=1000
+lr = 3e-4
 epochs=1000
-path = 'pretrain-FM-%s-emb%d-lr%d-bs%d-e%d' % ('movielens100k', emb_dim, lr, batch_size, epochs)
+path = 'pretrain-FM-%s-emb%d-lr%d-bs%d-e%d' % ('movielens100k', emb_dim, round(lr, 3), batch_size, epochs)
 fm = FM(emb_dim=emb_dim, epochs=epochs, batch_size=batch_size, learning_rate=lr, topk=20, savefile_path=path)
 fm.train()

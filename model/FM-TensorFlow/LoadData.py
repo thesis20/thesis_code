@@ -28,7 +28,9 @@ class LoadMovieLens():
         
         # self.resave_data()
         # self.one_hot()
-
+    
+    # Used to save data for the format used by CFM. 
+    # Not directly relevant to our implementation.
     def resave_data(self):
         line = ""
         for _, row in self.test_df.iterrows():
@@ -105,12 +107,12 @@ class LoadMovieLens():
                 genre_count += 1
 
 
-        self.user_fields = len(user_feature_dict)
-        self.item_fields = len(item_feature_dict)
-        self.user_feature_index_dict = user_feature_dict
-        self.item_feature_index_dict = item_feature_dict
+        self.user_fields = len(user_feature_dict) # number of user field features
+        self.item_fields = len(item_feature_dict) # number of item field features
+        self.user_feature_index_dict = user_feature_dict # dict with key: userId, value:one-hot index
+        self.item_feature_index_dict = item_feature_dict # dict with key: itemId, value:one-hot index
 
-        self.lookup_dict = lookup_dict
+        self.lookup_dict = lookup_dict # dict with one-hot indexes for both user and item
     
     def build_dictionaries(self):
         user_feature_dict = dict()
@@ -135,8 +137,8 @@ class LoadMovieLens():
                         genres.append(genre_index)
                 item_feature_dict[row['movieId']] = [movie_id_index] + genres
 
+        # 0-padding as movies have different amount of genres
         longest_genre_list = len(item_feature_dict[max(item_feature_dict, key=lambda x: len(item_feature_dict[x]))])
-        test = item_feature_dict[max(item_feature_dict, key=lambda x: len(item_feature_dict[x]))]
         for key, value in item_feature_dict.items():
             item_feature_dict[key] = (value + longest_genre_list * [0])[:longest_genre_list]
 
@@ -159,13 +161,17 @@ class LoadMovieLens():
         for key, value in train_set_user_pos_interactions.items():
             train_set_user_neg_interactions[key] = list(set(unique_train_items).difference(value))
         
-        self.user_feature_dict = user_feature_dict
-        self.item_feature_dict = item_feature_dict
-        self.user_ground_truth_dict = user_ground_truth_dict
+        self.user_feature_dict = user_feature_dict # dict with key --> userid, value --> user feature indexes
+        self.item_feature_dict = item_feature_dict # dict with key --> itemId, value --> item feature indexes
+        self.user_ground_truth_dict = user_ground_truth_dict # dict with key --> test userId, value --> ground truth interactions
+        
+        # dict with key --> train userId, value list of positive interaction Ids
         self.train_set_user_pos_interactions = train_set_user_pos_interactions
+        # dict with key --> train userId, value list of negative interaction Ids
         self.train_set_user_neg_interactions = train_set_user_neg_interactions
 
     def one_hot(self):
+        # creates a sparse matrix with one-hot values
         train_col = []
         train_row = []
 

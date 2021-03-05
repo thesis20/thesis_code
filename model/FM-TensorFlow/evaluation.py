@@ -9,13 +9,15 @@ class evaluator():
         dcg, idcg, gain = 0.0, 0.0, 1
         position = 0
         number_of_hits = 0
-
+        
+        # Calculate gain if the recommended item is in the ground truth list.
         for item in user_topk:
             position += 1
             if item in ground_truth:
                 number_of_hits += 1
                 dcg += gain / math.log2(position + 1)
-            
+
+        # Sort it such that all hits appear in the front of the list.    
         if number_of_hits > 0:
             for i in range(number_of_hits):
                 idcg += 1 / math.log2((i+1) + 1)
@@ -40,9 +42,13 @@ class evaluator():
             return (2.0*float(precision)*float(recall)) / (float(precision) + float(recall))
         except:
             return 0.0
-
+    
     def evaluate(self, score_dict, ground_truth_dict, topk, epoch):
         sorted_scores = {}
+        # The input is a dictionary of scores with user id as key.
+        # Argsort sorts it such that the position of the item in the list
+        # is returned, which is equal to the corresponding movieid
+        # We then take the top k of this sorted list of movieids for all users
         for key, value in score_dict.items():
             sorted_scores[key] = np.argsort(score_dict[key])[::-1]
             sorted_scores[key] = sorted_scores[key][:topk]
