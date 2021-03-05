@@ -41,10 +41,10 @@ class evaluator():
         except:
             return 0.0
 
-    def evaluate(self, score_dict, ground_truth_dict, topk):
+    def evaluate(self, score_dict, ground_truth_dict, topk, epoch):
         sorted_scores = {}
         for key, value in score_dict.items():
-            sorted_scores[key] = np.argsort(score_dict[key])
+            sorted_scores[key] = np.argsort(score_dict[key])[::-1]
             sorted_scores[key] = sorted_scores[key][:topk]
         
         precs, recs, f1s, ndcgs = [], [], [], []
@@ -66,7 +66,8 @@ class evaluator():
         print(f"NDCG: {ndcg_value}")
         
         f = open("results.txt", "a")
-        line = "P: " + str(precision_value) + " "
+        line = "Epoch: " + str(epoch) + " "
+        line += "P: " + str(precision_value) + " "
         line += "R: " + str(recall_value) + " "
         line += "F1: " + str(f1_value) + " "
         line += "NDCG: " + str(ndcg_value) + "\n"
