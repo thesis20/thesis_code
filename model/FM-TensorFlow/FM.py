@@ -30,10 +30,15 @@ class FM():
            
         with self.graph.as_default():
             tf.set_random_seed(self.random_seed)
-                
+              
             self.user_features = tf.placeholder(tf.int32, shape=[None, None])
             self.pos_features = tf.placeholder(tf.int32, shape=[None, None])
             self.neg_features = tf.placeholder(tf.int32, shape=[None, None])
+            
+            with tf.name_scope('TRAIN_LOSS'):
+                self.train_loss = tf.placeholder(tf.float32)
+                tf.summary.scalar('train_loss', self.train_loss)
+
 
             initializer = tf.contrib.layers.xavier_initializer()
             # w is amount of features (input dimension) by output dimension
@@ -120,10 +125,13 @@ class FM():
             if self.use_l2:
                 self.loss = tf.nn.l2_loss(self.loss)
             self.loss = tf.reduce_sum(self.loss)
+            train_loss = self.loss
 
             # Select optimizer for algorithm, adam requires lower lr than adagrad
             self.optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate).minimize(self.loss)
-
+            
+            self.summary = tf.summary.scalar('train_loss', train_loss)
+            
             self.saver = tf.train.Saver()
             init = tf.global_variables_initializer()
             self.sess = tf.Session()
@@ -151,21 +159,33 @@ class FM():
     def partial_fit(self, data):
         feed_dict = {self.user_features: data['user_ids'], self.pos_features: data['pos_interactions'],
                      self.neg_features: data['neg_interactions']}
-        return self.sess.run((self.loss, self.optimizer), feed_dict=feed_dict)
+        return self.sess.run((self.loss, self.summary), feed_dict=feed_dict)
 
     def train(self):
+        tensorboard_model_path = 'tensorboard/'
+        if not os.path.exists(tensorboard_model_path):
+            os.makedirs(tensorboard_model_path)
+        run_time = 1
+        while (True):
+            if os.path.exists(tensorboard_model_path +'/run_' + str(run_time)):
+                run_time += 1
+            else:
+                break
+        train_writer = tf.summary.FileWriter(tensorboard_model_path + '/run_' + str(run_time), self.sess.graph)
+
         for epoch in range(0, self.epochs):
-            total_loss = 0
             #total_batch = int(self.data.n_interactions / self.batch_size)
             #for i in range(total_batch):
             batch = self.sampler()
-            loss, _ = self.partial_fit(batch)
-            total_loss += loss
+            train_loss, summary = self.partial_fit(batch)
 
             if epoch > 0 and epoch % 100 == 0:
-                print(f"the total loss in {epoch}th iteration is: {total_loss}")
+                print(f"the total loss in {epoch}th iteration is: {train_loss}")
                 self.evaluate(epoch)
-        self.saver.save(self.sess, self.savefile_path)
+                train_writer.add_summary(summary, epoch)
+                
+        print(f"Path: {self.savefile_path}")
+        self.saver.save(self.sess, './checkpoints/' + self.savefile_path)
     
     def evaluate(self, epoch):
         scores = dict()
@@ -189,7 +209,7 @@ class FM():
 emb_dim=64
 batch_size=1000
 lr = 3e-4
-epochs=1000
-path = 'pretrain-FM-%s-emb%d-lr%d-bs%d-e%d' % ('movielens100k', emb_dim, round(lr, 3), batch_size, epochs)
+epochs=400
+path = 'pretrain-FM-%s-emb%d-lr%d-bs%d-e%d' % ('movielens100k', emb_dim, round(lr, 5), batch_size, epochs)
 fm = FM(emb_dim=emb_dim, epochs=epochs, batch_size=batch_size, learning_rate=lr, topk=20, savefile_path=path)
 fm.train()
