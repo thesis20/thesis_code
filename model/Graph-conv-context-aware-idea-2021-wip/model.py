@@ -58,12 +58,12 @@ class CSGCN():
             
             self.weights = self._init_weights()
             
-            self._csgcn_layers()
+            self.user_embs, self.item_embs, self.context_embs = self._csgcn_layers()
             
-            self.user_embeddings = tf.nn.embedding_lookup(self.weights['user_embedding'], self.users)
-            self.pos_interactions_embeddings = tf.nn.embedding_lookup(self.weights['item_embedding'], self.pos_interactions)
-            self.neg_interactions_embeddings = tf.nn.embedding_lookup(self.weights['item_embedding'], self.neg_interactions)
-            self.context_embeddings = tf.nn.embedding_lookup(self.weights['context_embedding'], self.context)
+            self.user_embeddings = tf.nn.embedding_lookup(self.user_embs, self.users)
+            self.pos_interactions_embeddings = tf.nn.embedding_lookup(self.item_embs, self.pos_interactions)
+            self.neg_interactions_embeddings = tf.nn.embedding_lookup(self.item_embs, self.neg_interactions)
+            self.context_embeddings = tf.nn.embedding_lookup(self.context_embs, self.context)
             self.user_sideinfo_embeddings = tf.nn.embedding_lookup(self.weights['user_sideinfo_embedding'], self.user_sideinfo)
             self.item_sideinfo_embeddings = tf.nn.embedding_lookup(self.weights['item_sideinfo_embedding'], self.item_sideinfo)
             
@@ -72,14 +72,23 @@ class CSGCN():
             
     
     def _csgcn_layers(self):
-        adj_mat = self._convert_sp_mat_to_sp_tensor(self.data.adj_mat)
+        uic_adj_mat = self._convert_sp_mat_to_sp_tensor(self.data.uic_adj_mat)
+        us_adj_mat = self._convert_sp_mat_to_sp_tensor(self.data.us_adj_mat)
+        is_adj_mat = self._convert_sp_mat_to_sp_tensor(self.data.is_adj_mat)
         
         embs = tf.concat([self.weights['user_embedding'], self.weights['item_embedding'], self.weights['context_embedding']])
-        matmul = tf.sparse_tensor_dense_matmul(adj_mat, embs)
+        all_embeddings = [embs]
         
         for k in range(0, self.n_layers):
+            matmul = tf.sparse_tensor_dense_matmul(uic_adj_mat, embs)
+            embs = matmul
+            all_embeddings += [matmul]
             # TODO: Implemnter convolution formel, overvej at følge LGCN med NuNi
-            continue
+
+        all_embeddings = tf.stack(all_embeddings, 1)
+        all_embeddings = tf.reduce_mean(all_embeddings, axis=1, keepdims=False)
+        ue, ie, ce = tf.split(all_embeddings, [self.data.n_users, self.data.n_items, self.data.n_context], 0)
+        return ue, ie, ce
         
     def _bpr_loss(self, users, pos_items, neg_items):
         # TODO: Skal den her ikke lige have noget side info og context
@@ -96,7 +105,7 @@ class CSGCN():
     def train(self):
         for epoch in range(0, self.epochs):
             total_loss = 0
-            batch = self.data.sampler()
+            batch = self.data.sampler(self.batch_size)
             for interaction in range(0, len(batch)):
                 total_loss += loss
             

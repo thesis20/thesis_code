@@ -6,6 +6,7 @@ import pandas as pd
 from scipy import sparse
 import numpy as np
 import random
+from sklearn.preprocessing import normalize
 
 class LoadMovieLens():
     def __init__(self, random_seed):
@@ -28,7 +29,7 @@ class LoadMovieLens():
         self.n_user_sideinfo, self.n_item_sideinfo = self.sideinfo_counter()
         self.n_context = self.context_counter()
         self.n_train_interactions = len(self.train_df.index)
-        self.adj_mat = self._create_adj_mat()
+        self.uic_adj_mat, self.us_adj_mat, self.is_adj_mat, self.norm_adj_mat = self._create_adj_mat()
         print(f"n_users: {self.n_users}")
         print(f"n_items: {self.n_items}")
         
@@ -55,7 +56,7 @@ class LoadMovieLens():
     def context_counter(self):
         context_count = 0
         for column_name in self.context_list:
-            context_count += full_df[column_name].nunique()
+            context_count += self.full_df[column_name].nunique()
         return context_count
 
     def load_data(self):
@@ -76,8 +77,9 @@ class LoadMovieLens():
         for column in ['movieId']:
             for index, value in enumerate(self.full_df[column].unique()):
                 item_offset_dict[value] = index
+
+        offset = 0
         for column in self.user_sideinfo_columns:
-            offset = 0
             for value in self.full_df[column].unique():
                 user_sideinfo_offset_dict[column + str(value)] = offset
                 offset += 1
@@ -87,10 +89,10 @@ class LoadMovieLens():
             item_sideinfo_offset_dict[column + str(1)] = genre_offset
             genre_offset += 1
         
+        offset = 0
         for column in self.context_list:
-            offset = 0
             for value in self.full_df[column].unique():
-                user_sideinfo_offset_dict[column + str(value)] = offset
+                context_offset_dict[column + str(value)] = offset
                 offset += 1
                 
         self.user_offset_dict = user_offset_dict
@@ -161,7 +163,7 @@ class LoadMovieLens():
         # dict with key --> (train userId), value --> (list of negative interaction Ids)
         self.train_set_user_neg_interactions = train_set_user_neg_interactions
         
-    def sampler(self):
+    def sampler(self, batch_size):
         # Negative sampling, samples a random set of users in train set, finds a
         # positive and negative interaction for this user.
         # Repeat for size of batch
@@ -169,7 +171,7 @@ class LoadMovieLens():
         user_ids, pos_interactions, neg_interactions = [], [], []
         contexts, user_sideinfo, item_sideinfo = [], [], []
         
-        random_userIds = random.choices(list(self.train_set_user_pos_interactions.keys()), k=self.batch_size)
+        random_userIds = random.choices(list(self.train_set_user_pos_interactions.keys()), k=batch_size)
         
         for userId in random_userIds:
             pos = random.choices(list(self.train_set_user_pos_interactions[userId]), k=1)[0]
@@ -190,26 +192,124 @@ class LoadMovieLens():
         adj_mat_size = self.n_users + self.n_items + self.n_context
         adj_mat = sparse.dok_matrix((adj_mat_size, adj_mat_size), dtype=np.float32)
         
+        user_sideinfo_adj_mat_size = self.n_users + self.n_user_sideinfo
+        item_sideinfo_adj_mat_size = self.n_items + self.n_item_sideinfo
+        user_sideinfo_adj_mat = sparse.dok_matrix((user_sideinfo_adj_mat_size, user_sideinfo_adj_mat_size), dtype=np.float32)
+        item_sideinfo_adj_mat = sparse.dok_matrix((item_sideinfo_adj_mat_size, item_sideinfo_adj_mat_size), dtype=np.float32)
+        
         for _, row in self.train_df.iterrows():
             user_index = self.user_offset_dict[row['userId']]
             item_index = self.item_offset_dict[row['movieId']]
-            context_indexes = [self.context_offset_dict[row[column]] for column in self.context_list]
+            context_indexes = [self.context_offset_dict[column + str(row[column])] for column in self.context_list]
             
             item_offset = self.n_users + item_index
+            user_offset = user_index + self.n_users
 
-            for context in context_indexes:
+            for context_index in context_indexes:
                 context_offset = self.n_users + self.n_items + context_index
                 adj_mat[user_index, context_offset] = 1
-                adj_mat[self.n_users + item_index, context_offset] = 1
+                adj_mat[item_offset, context_offset] = 1
             
-            adj_mat[user_index, item_index] = 1 # R
-            adj_mat[item_index, userId] = 1 # Rt
+            adj_mat[user_index, item_offset] = 1 # R
+            adj_mat[user_offset, item_index] = 1 # Rt
 
             #   U  I  C
             # U 0  R  uc
             # I Rt 0  ic
             # C 0  0  0
             
-        return adj_mat
+        for userId in self.train_df['userId'].unique():
+            sideinfo_indexes = self.user_sideinfo_dict[userId]
+            user_index = self.user_offset_dict[userId]
+            
+            for sideinfo_index in sideinfo_indexes:
+                user_offset = sideinfo_index + self.n_users
+                user_sideinfo_adj_mat[user_index, user_offset] = 1
+                user_sideinfo_adj_mat[user_offset, user_index] = 1
+                
+        for movieId in self.train_df['movieId'].unique():
+            sideinfo_indexes = self.item_sideinfo_dict[movieId]
+            item_index = self.item_offset_dict[movieId]
+            
+            for sideinfo_index in sideinfo_indexes:
+                item_offset = sideinfo_index + self.n_items
+                item_sideinfo_adj_mat[item_index, item_offset] = 1
+                item_sideinfo_adj_mat[item_offset, item_index] = 1
+
+        norm_us_adj_mat = self.normalize_sideinfo(user_sideinfo_adj_mat)
+        norm_is_adj_mat = self.normalize_sideinfo(item_sideinfo_adj_mat)
+        print("here")
+        norm_adj_mat = self._normalize_adj_matrix(adj_mat)
         
+        return adj_mat, user_sideinfo_adj_mat, item_sideinfo_adj_mat, norm_adj_mat
+    
+    def _normalize_adj_matrix(self, x):
         
+        matrix_copy = sparse.dok_matrix(x.shape, dtype=np.float32)
+        places = sparse.find(x)
+        
+        rows, cols, values = places 
+        
+        entries = list(zip(rows, cols))
+        
+        ui_counter = dict()
+        # UI
+        # 1 2
+        # 2 1
+        # 3 1
+        uc_counter = dict()
+        ic_counter = dict()
+        
+        for row, col in entries:
+            if row < self.n_users: #Rui and Ruc
+                if col > self.n_users + self.n_items: # Ruc
+                    if row in uc_counter:
+                        uc_counter[row] += 1
+                    else:
+                        uc_counter[row] = 1
+                else: # Rui
+                    if row in ui_counter:
+                        ui_counter[row] += 1
+                    else:
+                        ui_counter[row] = 1
+            else:
+                if col > self.n_users + self.n_items: # Ric
+                    if row in ic_counter:
+                        ic_counter[row] += 1
+                    else:
+                        ic_counter[row] = 1
+                        
+        for row, col in entries:
+            if row < self.n_users: #Rui and Ruc
+                if col > self.n_users + self.n_items: # Ruc
+                    matrix_copy[row, col] = 1.0/uc_counter[row]
+                else: # Rui and RuiT
+                    matrix_copy[row, col] = 1.0/ui_counter[row]
+                    matrix_copy[col, row] = 1.0/ui_counter[row]
+            else:
+                if col > self.n_users + self.n_items: # Ric
+                    matrix_copy[row, col] = 1.0/ic_counter[row]
+            
+        return matrix_copy
+        
+    def normalize_sideinfo(self, x):
+        matrix_copy = sparse.dok_matrix(x.shape, dtype=np.float32)
+        places = sparse.find(x)
+        rows, cols, values = places
+        entries = list(zip(rows, cols))
+        counter = {}
+        
+        for row, col in entries:
+            if row in counter:
+                if x[row,col] == 1:
+                    counter[row] += 1
+            else:
+                if x[row,col] == 1:
+                    counter[row] = 1
+        
+        for row, col in entries:
+            if x[row,col] == 1:
+                matrix_copy[row,col] = 1.0/counter[row]
+         
+        return matrix_copy
+    
