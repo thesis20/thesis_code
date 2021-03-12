@@ -17,6 +17,8 @@ class LoadMovieLens():
                         'thriller', 'war', 'western']
         self.user_sideinfo_columns = ['age', 'gender', 'occupation', 'zipcode']
         self.context_list = ['weekday', 'timeofday']
+        self.userid_column_name = 'userId'
+        self.itemid_column_name = 'movieId'
         self.path = 'Data/ml100k/'
         self.train_file = self.path + "train.txt"
         self.test_file = self.path + "test.txt"
@@ -28,22 +30,26 @@ class LoadMovieLens():
         self.n_train_items, self.n_test_items, self.n_items = self.item_counter()
         self.n_user_sideinfo, self.n_item_sideinfo = self.sideinfo_counter()
         self.n_context = self.context_counter()
+        self.context_test_combinations = self.get_unique_train_contexts()
         self.n_train_interactions = len(self.train_df.index)
-        self.uic_adj_mat, self.us_adj_mat, self.is_adj_mat, self.norm_adj_mat = self._create_adj_mat()
+        self.uic_adj_mat, self.us_adj_mat, self.is_adj_mat, self.norm_adj_mat, self.norm_us_adj_mat, self.norm_is_adj_mat = self._create_adj_mat()
         print(f"n_users: {self.n_users}")
         print(f"n_items: {self.n_items}")
+        print(f"n_user_sideinfo: {self.n_user_sideinfo}")
+        print(f"n_item_sideinfo: {self.n_item_sideinfo}")
+        print(f"n_context: {self.n_context}")
         
 
     def user_counter(self):
-        train_users = self.train_df['userId'].nunique()
-        test_users = self.test_df['userId'].nunique()
-        total_users = self.full_df['userId'].nunique()
+        train_users = self.train_df[self.userid_column_name].nunique()
+        test_users = self.test_df[self.userid_column_name].nunique()
+        total_users = self.full_df[self.userid_column_name].nunique()
         return train_users, test_users, total_users
 
     def item_counter(self):
-        train_items = self.train_df['movieId'].nunique()
-        test_items = self.test_df['movieId'].nunique()
-        total_items = self.full_df['movieId'].nunique()
+        train_items = self.train_df[self.itemid_column_name].nunique()
+        test_items = self.test_df[self.itemid_column_name].nunique()
+        total_items = self.full_df[self.itemid_column_name].nunique()
         return train_items, test_items, total_items
 
     def sideinfo_counter(self):
@@ -71,10 +77,10 @@ class LoadMovieLens():
         item_sideinfo_offset_dict = {}
         context_offset_dict = {}
         
-        for column in ['userId']:
+        for column in [self.userid_column_name]:
             for index, value in enumerate(self.full_df[column].unique()):
                 user_offset_dict[value] = index
-        for column in ['movieId']:
+        for column in [self.itemid_column_name]:
             for index, value in enumerate(self.full_df[column].unique()):
                 item_offset_dict[value] = index
 
@@ -110,52 +116,55 @@ class LoadMovieLens():
 
         for _, row in self.test_df.iterrows():
             # Add interactions as ground truths 
-            if row['userId'] not in user_ground_truth_dict:
-                user_ground_truth_dict[row['userId']] = [row['movieId']]
+            if row[self.userid_column_name] not in user_ground_truth_dict:
+                user_ground_truth_dict[row[self.userid_column_name]] = [row[self.itemid_column_name]]
                 # If user has not been observed yet, save sideinfo
                 user_sideinfo_indexes = []
                 for column in self.user_sideinfo_columns:
                     user_sideinfo_indexes.append(self.user_sideinfo_offset_dict[column + str(row[column])])
-                user_sideinfo_dict[row['userId']] = user_sideinfo_indexes
+                user_sideinfo_dict[row[self.userid_column_name]] = user_sideinfo_indexes
             else:
-                if row['movieId'] not in user_ground_truth_dict[row['userId']]:
-                    user_ground_truth_dict[row['userId']].append(row['movieId'])
+                if row[self.itemid_column_name] not in user_ground_truth_dict[row[self.userid_column_name]]:
+                    user_ground_truth_dict[row[self.userid_column_name]].append(row[self.itemid_column_name])
             
-            if row['movieId'] not in item_sideinfo_dict:
+            if row[self.itemid_column_name] not in item_sideinfo_dict:
                 # If movie has not been observed yet, save sideinfo
                 item_sideinfo_indexes = []
                 for column in self.genrelist:
                     if row[column] == 1:
                         item_sideinfo_indexes.append(self.item_sideinfo_offset_dict[column + str(1)])
-                item_sideinfo_dict[row['movieId']] = item_sideinfo_indexes
+                item_sideinfo_dict[row[self.itemid_column_name]] = item_sideinfo_indexes
         
         for _, row in self.train_df.iterrows():
-            if row['userId'] not in train_set_user_pos_interactions:
+            if row[self.userid_column_name] not in train_set_user_pos_interactions:
                 # TODO: This shouldn't be hard-coded
-                train_set_user_pos_interactions[row['userId']] = [(row['movieId'], row['weekday'], row['timeofday'])]
+                train_set_user_pos_interactions[row[self.userid_column_name]] = [(row['movieId'], row['weekday'], row['timeofday'])]
                 # If user has not been observed yet, save sideinfo
                 user_sideinfo_indexes = []
                 for column in self.user_sideinfo_columns:
                     user_sideinfo_indexes.append(self.user_sideinfo_offset_dict[column + str(row[column])])
-                user_sideinfo_dict[row['userId']] = user_sideinfo_indexes
+                user_sideinfo_dict[row[self.userid_column_name]] = user_sideinfo_indexes
             else:
-                train_set_user_pos_interactions[row['userId']].append((row['movieId'], row['weekday'], row['timeofday']))
+                train_set_user_pos_interactions[row[self.userid_column_name]].append((row['movieId'], row['weekday'], row['timeofday']))
                 
-            if row['movieId'] not in item_sideinfo_dict:
+            if row[self.itemid_column_name] not in item_sideinfo_dict:
                 # If movie has not been observed yet, save sideinfo
                 item_sideinfo_indexes = []
                 for column in self.genrelist:
                     if row[column] == 1:
                         item_sideinfo_indexes.append(self.item_sideinfo_offset_dict[column + str(1)])
-                item_sideinfo_dict[row['movieId']] = item_sideinfo_indexes       
+                item_sideinfo_dict[row[self.itemid_column_name]] = item_sideinfo_indexes       
                  
-        unique_train_items = self.train_df['movieId'].unique()
+        unique_train_items = self.train_df[self.itemid_column_name].unique()
         for key, value in train_set_user_pos_interactions.items():
             train_set_user_neg_interactions[key] = list(set(unique_train_items).difference(value[0]))
+              
+        longest_genre_list = len(item_sideinfo_dict[min(item_sideinfo_dict, key=lambda x: len(item_sideinfo_dict[x]))])
+        for key, value in item_sideinfo_dict.items():
+            item_sideinfo_dict[key] = (value + longest_genre_list * [0])[:longest_genre_list]
         
         self.user_sideinfo_dict = user_sideinfo_dict
         self.item_sideinfo_dict = item_sideinfo_dict
-        
         # dict with key --> (test userId), value --> (ground truth interactions)
         self.user_ground_truth_dict = user_ground_truth_dict 
         # dict with key --> (train userId), value --> (list of positive interaction Ids)
@@ -177,10 +186,13 @@ class LoadMovieLens():
             pos = random.choices(list(self.train_set_user_pos_interactions[userId]), k=1)[0]
             neg = random.choices(list(self.train_set_user_neg_interactions[userId]), k=1)[0]
             
-            user_ids.append(self.user_offset_dict[userId])
-            pos_interactions.append(self.item_offset_dict[pos[0]])
-            neg_interactions.append(self.item_offset_dict[neg[0]])
-            contexts.append([self.context_offset_dict[pos[1]], self.context_offset_dict[pos[2]]])
+            user_ids.append([self.user_offset_dict[userId]])
+            pos_interactions.append([self.item_offset_dict[pos[0]]])
+            neg_interactions.append([self.item_offset_dict[neg]])
+            user_contexts = []
+            for index, context in enumerate(self.context_list, 1):
+                user_contexts.append(self.context_offset_dict[context + str(pos[index])])
+            contexts.append(user_contexts)
             user_sideinfo.append(self.user_sideinfo_dict[userId])
             item_sideinfo.append(self.item_sideinfo_dict[pos[0]])
             
@@ -198,8 +210,8 @@ class LoadMovieLens():
         item_sideinfo_adj_mat = sparse.dok_matrix((item_sideinfo_adj_mat_size, item_sideinfo_adj_mat_size), dtype=np.float32)
         
         for _, row in self.train_df.iterrows():
-            user_index = self.user_offset_dict[row['userId']]
-            item_index = self.item_offset_dict[row['movieId']]
+            user_index = self.user_offset_dict[row[self.userid_column_name]]
+            item_index = self.item_offset_dict[row[self.itemid_column_name]]
             context_indexes = [self.context_offset_dict[column + str(row[column])] for column in self.context_list]
             
             item_offset = self.n_users + item_index
@@ -218,7 +230,7 @@ class LoadMovieLens():
             # I Rt 0  ic
             # C 0  0  0
             
-        for userId in self.train_df['userId'].unique():
+        for userId in self.train_df[self.userid_column_name].unique():
             sideinfo_indexes = self.user_sideinfo_dict[userId]
             user_index = self.user_offset_dict[userId]
             
@@ -227,7 +239,7 @@ class LoadMovieLens():
                 user_sideinfo_adj_mat[user_index, user_offset] = 1
                 user_sideinfo_adj_mat[user_offset, user_index] = 1
                 
-        for movieId in self.train_df['movieId'].unique():
+        for movieId in self.train_df[self.itemid_column_name].unique():
             sideinfo_indexes = self.item_sideinfo_dict[movieId]
             item_index = self.item_offset_dict[movieId]
             
@@ -238,10 +250,9 @@ class LoadMovieLens():
 
         norm_us_adj_mat = self.normalize_sideinfo(user_sideinfo_adj_mat)
         norm_is_adj_mat = self.normalize_sideinfo(item_sideinfo_adj_mat)
-        print("here")
         norm_adj_mat = self._normalize_adj_matrix(adj_mat)
         
-        return adj_mat, user_sideinfo_adj_mat, item_sideinfo_adj_mat, norm_adj_mat
+        return adj_mat, user_sideinfo_adj_mat, item_sideinfo_adj_mat, norm_adj_mat, norm_us_adj_mat, norm_is_adj_mat
     
     def _normalize_adj_matrix(self, x):
         
@@ -313,3 +324,12 @@ class LoadMovieLens():
          
         return matrix_copy
     
+    def get_unique_train_contexts(self):
+        combinations = set()
+        
+        for index, row in test_df.iterrows():
+            context_list = []
+            for context in self.context_list:
+                 context_list.append(self.self.context_offset_dict[context + str(row[context])])
+            combinations.add(context_list)
+        return combinations
