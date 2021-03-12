@@ -42,6 +42,56 @@ class evaluator():
             return (2.0*float(precision)*float(recall)) / (float(precision) + float(recall))
         except:
             return 0.0
+        
+    def evaluate_hr_ndcg_mrr(self, score_dict, ground_truth_item):
+        # hitrate
+        hitrate = 1 if ground_truth_item in score_dict else 0
+        
+        # ndcg
+        dcg, gain = 0.0, 1
+        ndcg = 0
+        for position, item in enumerate(score_dict, 1):
+            if item in ground_truth_item:
+                dcg += gain / math.log2(position + 1)
+        ndcg = dcg / 1
+        
+        # mrr
+        mrr = 0
+        for position, item in enumerate(score_dict, 1):
+            if item in ground_truth_item:
+                mrr = 1 / position
+                
+        return hitrate, ndcg, mrr
+
+    def evaluate_loo(self, score_dict, ground_truth_dict, topk, epoch):
+        sorted_scores = {}
+        for key, value in score_dict.items():
+            sorted_scores[key] = np.argsort(score_dict[key])[::-1]
+            sorted_scores[key] = sorted_scores[key][:topk]
+        
+        hrs, ndcgs, mrrs = [], [], []
+        for key in sorted_scores.keys():
+            hitrate, ndcg, mrr = self.evaluate_hr_ndcg_mrr(sorted_scores[key], ground_truth_dict[key])
+            hrs.append(hitrate)
+            ndcgs.append(ndcg)
+            mrrs.append(mrr)
+        
+        hr_value = sum(hrs) / len(hrs)
+        ndcg_value = sum(ndcgs) / len(ndcgs)
+        mrr_value = sum(mrrs) / len(mrrs)
+        
+        print(f'Epoch: {epoch}')
+        print(f'HR@{topk}: {hr_value}')
+        print(f'NDCG@{topk}: {ndcg_value}')
+        print(f'MRR@{topk}: {mrr_value}')
+        
+        f = open("results.txt", "a")
+        line = "Epoch: " + str(epoch) + " "
+        line += "HR: " + str(hr_value) + " "
+        line += "NDCG: " + str(ndcg_value) + " "
+        line += "MRR: " + str(mrr_value) + "\n"
+        f.write(line)
+        f.close()
     
     def evaluate(self, score_dict, ground_truth_dict, topk, epoch):
         sorted_scores = {}

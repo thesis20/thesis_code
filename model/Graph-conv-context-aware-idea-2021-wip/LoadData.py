@@ -22,6 +22,7 @@ class LoadMovieLens():
         self.path = 'Data/ml100k/'
         self.train_file = self.path + "train.txt"
         self.test_file = self.path + "test.txt"
+        self.full_file = self.path + "out.txt"
         random.seed(random_seed)
         self.load_data() # Load train_df, test_df and full_data
         self.count_dimensions()
@@ -30,7 +31,7 @@ class LoadMovieLens():
         self.n_train_items, self.n_test_items, self.n_items = self.item_counter()
         self.n_user_sideinfo, self.n_item_sideinfo = self.sideinfo_counter()
         self.n_context = self.context_counter()
-        self.context_test_combinations = self.get_unique_train_contexts()
+        # self.context_test_combinations = self.get_unique_train_contexts()
         self.n_train_interactions = len(self.train_df.index)
         self.uic_adj_mat, self.us_adj_mat, self.is_adj_mat, self.norm_adj_mat, self.norm_us_adj_mat, self.norm_is_adj_mat = self._create_adj_mat()
         print(f"n_users: {self.n_users}")
@@ -66,9 +67,18 @@ class LoadMovieLens():
         return context_count
 
     def load_data(self):
-        self.train_df = pd.read_csv(self.train_file, sep=',')
-        self.test_df = pd.read_csv(self.test_file, sep=',')
-        self.full_df = self.train_df.append(self.test_df)
+        self.full_df = pd.read_csv(self.full_file, sep=',')
+        indices = self.full_df.index
+        test_indices = []
+        for userId in self.full_df[self.userid_column_name].unique():
+            user_df = self.full_df[self.full_df[self.userid_column_name] == userId]
+            newest_entry = user_df.index[user_df['timestamp']==user_df['timestamp'].max()].tolist()
+            newest_row = newest_entry[-1]
+            test_indices.append(indices[newest_row])
+        self.test_df = self.full_df.loc[test_indices]
+        train_indices = list(set(indices).difference(test_indices))
+        self.train_df = self.full_df.loc[train_indices]
+        
 
     def count_dimensions(self):
         user_offset_dict = {}
@@ -324,12 +334,12 @@ class LoadMovieLens():
          
         return matrix_copy
     
-    def get_unique_train_contexts(self):
-        combinations = set()
+    # def get_unique_train_contexts(self):
+    #     combinations = set()
         
-        for index, row in test_df.iterrows():
-            context_list = []
-            for context in self.context_list:
-                 context_list.append(self.self.context_offset_dict[context + str(row[context])])
-            combinations.add(context_list)
-        return combinations
+    #     for index, row in test_df.iterrows():
+    #         context_list = []
+    #         for context in self.context_list:
+    #              context_list.append(self.self.context_offset_dict[context + str(row[context])])
+    #         combinations.add(context_list)
+    #     return combinations

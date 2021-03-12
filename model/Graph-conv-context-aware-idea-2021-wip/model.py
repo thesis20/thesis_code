@@ -13,6 +13,7 @@ cpus = [x.name for x in device_lib.list_local_devices() if x.device_type == 'CPU
 class CSGCN():
     def __init__(self, sess, emb_dim, epochs, n_layers, batch_size, learning_rate, seed, ks):
         self.random_seed = seed
+        self.decay = 1e-5
         self.data = LoadMovieLens(random_seed=self.random_seed)
         self.n_layers = n_layers
         self.emb_dim = emb_dim
@@ -20,7 +21,7 @@ class CSGCN():
         self.batch_size = batch_size
         self.learning_rate = learning_rate
         self.ks = eval(ks)
-        self.use_l2 = True
+        self.use_l2 = False
         self.use_dropout = False
         self.evaluator = evaluator()
         self.sess = sess
@@ -34,7 +35,7 @@ class CSGCN():
         rn = tf.random_normal_initializer(stddev=0.01)
         xavier = tf.contrib.layers.xavier_initializer()
         
-        initializer = xavier
+        initializer = rn
         
         all_weights['user_embedding'] = tf.Variable(initializer([self.data.n_users, self.emb_dim]),
                                                     name='user_embedding')
@@ -69,6 +70,12 @@ class CSGCN():
         self.user_sideinfo_embeddings = tf.nn.embedding_lookup(self.weights['user_sideinfo_embedding'], self.user_sideinfo)
         self.item_sideinfo_embeddings = tf.nn.embedding_lookup(self.weights['item_sideinfo_embedding'], self.item_sideinfo)
         
+        self.u_g_embeddings_pre = tf.nn.embedding_lookup(self.weights['user_embedding'], self.users) #TODO: Overvej den her
+        self.pos_i_g_embeddings_pre = tf.nn.embedding_lookup(self.weights['item_embedding'], self.pos_interactions)
+        self.neg_i_g_embeddings_pre = tf.nn.embedding_lookup(self.weights['item_embedding'], self.neg_interactions)
+        
+        self.batch_ratings = tf.matmul(self.user_embeddings, self.pos_interactions_embeddings, transpose_a=False, transpose_b=True)
+        
         self.pos_scores = self._predict(self.user_embeddings, self.pos_interactions_embeddings, self.context_embeddings)
         self.neg_scores = self._predict(self.user_embeddings, self.neg_interactions_embeddings, self.context_embeddings)
         
@@ -94,7 +101,7 @@ class CSGCN():
             matmul = tf.sparse_tensor_dense_matmul(uic_adj_mat, embs)
             embs = matmul
             # TODO: Implemnter convolution formel, overvej at følge LGCN med NuNi
-            # matmul = tf.nn.l2_normalize(matmul, axis=1)
+            # matmul = tf.nn.l2_normalize(atmul, axis=1)
             all_embeddings += [matmul]
             
         
@@ -122,6 +129,19 @@ class CSGCN():
         return scores
         
     def _bpr_loss(self, pos_scores, neg_scores):
+        regularizer = tf.nn.l2_loss(self.u_g_embeddings_pre) + tf.nn.l2_loss(
+                self.pos_i_g_embeddings_pre) + tf.nn.l2_loss(self.neg_i_g_embeddings_pre)
+        regularizer = regularizer / self.batch_size
+        
+        mf_loss = tf.reduce_mean(-tf.log(tf.nn.sigmoid(pos_scores - neg_scores)))
+        
+
+        emb_loss = self.decay * regularizer
+        
+        loss = emb_loss + mf_loss
+        return loss
+        
+    def _bpr_loss_old(self, pos_scores, neg_scores):
         # TODO: Skal den her ikke lige have noget side info og context
         loss = -tf.log(tf.sigmoid(pos_scores - neg_scores))
         if self.use_l2:
@@ -144,45 +164,55 @@ class CSGCN():
         self.sess.run(self.init)
         
         # Run epochs
-        for epoch in range(0, self.epochs):
+        for epoch in range(0, self.epochs + 1):
             batch = self.data.sampler(self.batch_size)
             opt, loss = self.partial_fit(batch)
             
-            print(f"The total loss in {epoch}th iteration is: {loss}")
-            if epoch > 0 and epoch % 100 == 0:
+            if epoch % 25 == 0:
+                print(f"The total loss in {epoch}th iteration is: {loss}")
+            if epoch % 100 == 0:
                 self.evaluate(epoch)
 
     def evaluate(self, epoch):
-        for k in self.ks:
-            scores = dict()
-            for user in self.data.test_df[self.data.userid_column_name].unique():
-                user_index = self.data.user_offset_dict[user]
-                user_sideinfo = self.data.user_sideinfo_dict[user]
+        scores = dict()
+        
+        for _, row in self.data.test_df.iterrows():
+            userId = row[self.data.userid_column_name]
+            user_index = self.data.user_offset_dict[userId]
+            user_sideinfo = self.data.user_sideinfo_dict[userId]
+            context = []
+            for context_col in self.data.context_list:
+                context.append(row[context_col])
+            
+            user_indexes = []
+            user_sideinfos = []
+            item_indexes = []
+            item_sideinfos = []
+            contexts = []
+            for item in self.data.test_df[self.data.itemid_column_name].unique():
+                item_index = self.data.item_offset_dict[item]
+                item_sideinfo = self.data.item_sideinfo_dict[item]
                 
-                user_indexes = []
-                user_sideinfos = []
-                item_indexes = []
-                item_sideinfos = []
-                contexts = []
-                for item in self.data.test_df[self.data.itemid_column_name].unique():
-                    item_index = self.data.item_offset_dict[item]
-                    item_sideinfo = self.data.item_sideinfo_dict[item]
-                    
-                    for context_combination in self.context_test_combinations:
-                        user_indexes.append(user_index)
-                        user_sideinfos.append(user_sideinfo)
-                        item_indexes.append(item_index)
-                        item_sideinfos.append(item_sideinfo)
-                        contexts.append(context_combination)
-                                        
-                feed_dict = {self.users: user_indexes, self.pos_interactions: item_indexes,
-                             self.context: contexts, self.user_sideinfo: user_sideinfos,
-                             self.item_sideinfo: item_sideinfos}
-                pos_scores = self.sess.run([self.pos_scores], feed_dict=feed_dict)
-                pos_scores = pos_scores.reshape(self.data.n_test_items * len(self.context_test_combinations))
-                scores[user] = pos_scores
+                user_indexes.append([user_index])
+                user_sideinfos.append(user_sideinfo)
+                item_indexes.append([item_index])
+                item_sideinfos.append(item_sideinfo)
+                contexts.append(context)                
+            
+            
+            feed_dict = {self.users: user_indexes, self.pos_interactions: item_indexes,
+                            self.context: contexts, self.user_sideinfo: user_sideinfos,
+                            self.item_sideinfo: item_sideinfos}
+            # pos_scores = self.sess.run(self.pos_scores, feed_dict=feed_dict)
+            pos_scores = self.sess.run(self.batch_ratings, feed_dict=feed_dict)
+            rate_batch = np.array(pos_scores)
+            #print(len(pos_scores))
+            #exit()
+            #pos_scores = np.sum(pos_scores, axis=1)
+            scores[userId] = pos_scores
 
-        self.evaluator.evaluate(scores, self.data.user_ground_truth_dict, k, epoch)
+        for k in self.ks:
+            self.evaluator.evaluate_loo(scores, self.data.user_ground_truth_dict, k, epoch)
         
 if __name__ == '__main__':
     emb_dim=64

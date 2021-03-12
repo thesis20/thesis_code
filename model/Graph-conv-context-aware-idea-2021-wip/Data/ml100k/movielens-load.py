@@ -48,7 +48,7 @@ column_names = ['userId', 'age', 'gender', 'occupation', 'zipcode', 'movieId', '
                         'childrens', 'comedy', 'crime', 'documentary',
                         'drama', 'fantasy',  'film-noir', 'horror',
                         'musical', 'mystery', 'romance', 'scifi',
-                        'thriller', 'war', 'western', 'weekday', 'timeofday']
+                        'thriller', 'war', 'western', 'weekday', 'timeofday', 'timestamp']
 
 joined = joined.reindex(columns=column_names)
 
