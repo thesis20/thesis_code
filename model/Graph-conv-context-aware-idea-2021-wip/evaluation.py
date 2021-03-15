@@ -65,10 +65,13 @@ class evaluator():
 
     def evaluate_loo(self, score_dict, ground_truth_dict, topk, epoch):
         sorted_scores = {}
-        for key, value in score_dict.items():
-            sorted_scores[key] = np.argsort(score_dict[key])[::-1]
-            sorted_scores[key] = sorted_scores[key][:topk]
         
+        for key, value in score_dict.items():
+            results = sorted(value, key=lambda x: x[1], reverse=True)[:topk]
+            sorted_scores[key] = [a_tuple[0] for a_tuple in results]
+            # sorted_scores[key] = np.argsort(score_dict[key][1])[::-1]
+            # sorted_scores[key] = sorted_scores[key][:topk]
+
         hrs, ndcgs, mrrs = [], [], []
         for key in sorted_scores.keys():
             hitrate, ndcg, mrr = self.evaluate_hr_ndcg_mrr(sorted_scores[key], ground_truth_dict[key])
@@ -80,16 +83,16 @@ class evaluator():
         ndcg_value = sum(ndcgs) / len(ndcgs)
         mrr_value = sum(mrrs) / len(mrrs)
         
-        print(f'Epoch: {epoch}')
-        print(f'HR@{topk}: {hr_value}')
-        print(f'NDCG@{topk}: {ndcg_value}')
-        print(f'MRR@{topk}: {mrr_value}')
+        print(f'\nEpoch: {epoch}')
+        print(f'HR@{topk}: {round(hr_value*100, 3)}')
+        print(f'NDCG@{topk}: {round(ndcg_value*100, 3)}')
+        print(f'MRR@{topk}: {round(mrr_value*100, 3)}')
         
         f = open("results.txt", "a")
         line = "Epoch: " + str(epoch) + " "
-        line += "HR: " + str(hr_value) + " "
-        line += "NDCG: " + str(ndcg_value) + " "
-        line += "MRR: " + str(mrr_value) + "\n"
+        line += "HR: " + str(round(hr_value*100, 10)) + "% "
+        line += "NDCG: " + str(round(ndcg_value*100, 10)) + "% "
+        line += "MRR: " + str(round(mrr_value*100, 10)) + "%\n"
         f.write(line)
         f.close()
     

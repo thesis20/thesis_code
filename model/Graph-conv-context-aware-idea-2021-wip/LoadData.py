@@ -267,56 +267,61 @@ class LoadMovieLens():
     def _normalize_adj_matrix(self, x):
         
         matrix_copy = sparse.dok_matrix(x.shape, dtype=np.float32)
-        places = sparse.find(x)
-        
-        rows, cols, values = places 
+
+        rows, cols, _ = sparse.find(x)
         
         entries = list(zip(rows, cols))
         
         ui_counter = dict()
-        # UI
-        # 1 2
-        # 2 1
-        # 3 1
+        iu_counter = dict()
+        #      U    I      C
+        # U  (1,1) (1,2) (1,3)
+        # I  (2,1) (2,2) (2,3)
+        # C  (3,1) (3,2) (3,3)
         uc_counter = dict()
         ic_counter = dict()
         
         for row, col in entries:
-            if row < self.n_users: #Rui and Ruc
-                if col > self.n_users + self.n_items: # Ruc
+            if row < self.n_users: # (1,1) (1,2) (1,3)
+                if col > self.n_users + self.n_items: # (1,3)
                     if row in uc_counter:
                         uc_counter[row] += 1
                     else:
                         uc_counter[row] = 1
-                else: # Rui
+                else: # (1,2)
                     if row in ui_counter:
                         ui_counter[row] += 1
                     else:
                         ui_counter[row] = 1
             else:
-                if col > self.n_users + self.n_items: # Ric
+                if col > self.n_users + self.n_items: # (2,3)
                     if row in ic_counter:
                         ic_counter[row] += 1
                     else:
                         ic_counter[row] = 1
+                else:
+                    if row in iu_counter:
+                        iu_counter[row] += 1
+                    else:
+                        iu_counter[row] = 1
                         
         for row, col in entries:
-            if row < self.n_users: #Rui and Ruc
-                if col > self.n_users + self.n_items: # Ruc
-                    matrix_copy[row, col] = 1.0/uc_counter[row]
-                else: # Rui and RuiT
-                    matrix_copy[row, col] = 1.0/ui_counter[row]
-                    matrix_copy[col, row] = 1.0/ui_counter[row]
+            if row < self.n_users:
+                if col > self.n_users + self.n_items:
+                    matrix_copy[row, col] = 1.0/uc_counter[row] # (1,3)
+                else:
+                    matrix_copy[row, col] = 1.0/ui_counter[row] # (1,2)
             else:
-                if col > self.n_users + self.n_items: # Ric
-                    matrix_copy[row, col] = 1.0/ic_counter[row]
+                if col > self.n_users + self.n_items:
+                    matrix_copy[row, col] = 1.0/ic_counter[row] # (2,3)
+                else:
+                    matrix_copy[row, col] = 1.0/iu_counter[row] # (2,1)
             
         return matrix_copy
         
     def normalize_sideinfo(self, x):
         matrix_copy = sparse.dok_matrix(x.shape, dtype=np.float32)
-        places = sparse.find(x)
-        rows, cols, values = places
+        rows, cols, _ = sparse.find(x)
         entries = list(zip(rows, cols))
         counter = {}
         
@@ -333,13 +338,3 @@ class LoadMovieLens():
                 matrix_copy[row,col] = 1.0/counter[row]
          
         return matrix_copy
-    
-    # def get_unique_train_contexts(self):
-    #     combinations = set()
-        
-    #     for index, row in test_df.iterrows():
-    #         context_list = []
-    #         for context in self.context_list:
-    #              context_list.append(self.self.context_offset_dict[context + str(row[context])])
-    #         combinations.add(context_list)
-    #     return combinations
