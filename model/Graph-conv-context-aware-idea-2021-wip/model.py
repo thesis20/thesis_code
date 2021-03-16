@@ -5,11 +5,11 @@ from evaluation import evaluator
 from LoadData import LoadMovieLens
 from tensorflow.python.client import device_lib
 import pickle
-
+from utility.parser import parse_args
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 cpus = [x.name for x in device_lib.list_local_devices() if x.device_type == 'CPU']
-
+args = parse_args()
 
 class CSGCN():
     def __init__(self, sess, data, emb_dim, epochs, n_layers, batch_size, learning_rate, seed, ks):
@@ -23,8 +23,6 @@ class CSGCN():
         self.batch_size = batch_size
         self.learning_rate = learning_rate
         self.ks = eval(ks)
-        self.use_l2 = False
-        self.use_dropout = True
         self.evaluator = evaluator()
         self.sess = sess
         self._init_graph()
@@ -110,9 +108,8 @@ class CSGCN():
         self.neg_scores = self._predict(self.user_embeddings, self.neg_interactions_embeddings,
                                         self.context_embeddings, self.user_bias, self.neg_item_bias)
 
-        if self.use_dropout:
-            self.pos_scores = tf.nn.dropout(self.pos_scores, 0.7)
-            self.neg_scores = tf.nn.dropout(self.neg_scores, 0.7)
+        self.pos_scores = tf.nn.dropout(self.pos_scores, args.keep_prob)
+        self.neg_scores = tf.nn.dropout(self.neg_scores, args.keep_prob)
 
         self.loss = self._bpr_loss(self.pos_scores, self.neg_scores)
         self.opt = tf.train.AdamOptimizer(
@@ -214,7 +211,7 @@ class CSGCN():
 
             if epoch % 25 == 0:
                 print(f"The total loss in {epoch}th iteration is: {loss}")
-            if epoch % 100 == 0:
+            if epoch % args.eval_interval == 0:
                 self.evaluate(epoch)
 
     def evaluate(self, epoch):
@@ -261,18 +258,18 @@ class CSGCN():
 
 
 if __name__ == '__main__':
-    emb_dim = 64
-    epochs = 1000
-    n_layers = 3
-    batch_size = 604
-    learning_rate = 3e-4
-    seed = 2021
-    ks = '[20, 50]'
-    dataset = 'ml1m'
-    load_data = False
+    emb_dim = args.embed_size
+    epochs = args.epoch
+    n_layers = args.layers
+    batch_size = args.batch
+    learning_rate = args.lr
+    seed = args.seed
+    ks = args.ks
+    dataset = args.dataset
+    load_data = args.load
 
 
-    if load_data:
+    if load_data == 1:
         path = 'checkpoints/' + dataset + '.chk'
         file_data = open(path, 'rb')
         data = pickle.load(file_data)
