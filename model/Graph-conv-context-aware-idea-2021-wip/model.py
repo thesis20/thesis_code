@@ -17,6 +17,7 @@ args = parse_args()
 class CSGCN():
     def __init__(self, sess, data):
         self.random_seed = args.seed
+        random.seed(self.random_seed)
         self.decay = args.decay
         self.data = data
         print("Loaded data")
