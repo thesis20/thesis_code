@@ -205,11 +205,11 @@ class LoadMovieLens():
                 set(unique_train_items).difference(value[0]))
 
         # TODO Fjern padding
-        longest_genre_list = len(item_sideinfo_dict[min(
-            item_sideinfo_dict, key=lambda x: len(item_sideinfo_dict[x]))])
-        for key, value in item_sideinfo_dict.items():
-            item_sideinfo_dict[key] = (
-                value + longest_genre_list * [0])[:longest_genre_list]
+        # longest_genre_list = len(item_sideinfo_dict[max(
+        #     item_sideinfo_dict, key=lambda x: len(item_sideinfo_dict[x]))])
+        # for key, value in item_sideinfo_dict.items():
+        #     item_sideinfo_dict[key] = (
+        #         value + longest_genre_list * [0])[:longest_genre_list]
 
         self.user_sideinfo_dict = user_sideinfo_dict
         self.item_sideinfo_dict = item_sideinfo_dict

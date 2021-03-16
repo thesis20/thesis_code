@@ -61,12 +61,12 @@ class CSGCN():
     def _init_graph(self):
         tf.set_random_seed(self.random_seed)
 
-        self.users = tf.placeholder(tf.int32, shape=[None, None])
-        self.pos_interactions = tf.placeholder(tf.int32, shape=[None, None])
-        self.neg_interactions = tf.placeholder(tf.int32, shape=[None, None])
-        self.context = tf.placeholder(tf.int32, shape=[None, None])
-        self.user_sideinfo = tf.placeholder(tf.int32, shape=[None, None])
-        self.item_sideinfo = tf.placeholder(tf.int32, shape=[None, None])
+        self.users = tf.placeholder(tf.int32, shape=[None])
+        self.pos_interactions = tf.placeholder(tf.int32, shape=[None])
+        self.neg_interactions = tf.placeholder(tf.int32, shape=[None])
+        self.context = tf.placeholder(tf.int32, shape=[None])
+        self.user_sideinfo = tf.placeholder(tf.int32, shape=[None])
+        self.item_sideinfo = tf.placeholder(tf.int32, shape=[None])
 
         self.weights = self._init_weights()
 
@@ -175,9 +175,9 @@ class CSGCN():
 
         pred = 0.5 * tf.subtract(first_term, second_term)
 
-        bilinear = tf.reduce_sum(pred, 1, keepdims=True)
+        # bilinear = tf.reduce_sum(pred, 1, keepdims=True)
 
-        y_hat = tf.add_n([bilinear, user_bias, item_bias])
+        y_hat = tf.add_n([pred, user_bias, item_bias])
 
         return y_hat
 
@@ -197,10 +197,8 @@ class CSGCN():
         indices = np.mat([coo.row, coo.col]).transpose()
         return tf.SparseTensor(indices, coo.data, coo.shape)
 
-    def _partial_fit(self, data):
-        feed_dict = {self.users: data['user_ids'], self.pos_interactions: data['pos_interactions'],
-                     self.neg_interactions: data['neg_interactions'], self.context: data['contexts'],
-                     self.user_sideinfo: data['user_sideinfo'], self.item_sideinfo: data['item_sideinfo']}
+    def _partial_fit(self, feed_dict):
+
         return self.sess.run([self.opt, self.loss], feed_dict=feed_dict)
 
     def train(self):
@@ -209,12 +207,19 @@ class CSGCN():
 
         # Run epochs
         for epoch in range(0, self.epochs + 1):
+            batch_loss = 0
             batch = self.data.sampler(self.batch_size)
-            opt, loss = self._partial_fit(batch)
+            
+            for i in range(self.batch_size):
+                feed_dict = {self.users: batch['user_ids'][i], self.pos_interactions: batch['pos_interactions'][i],
+                     self.neg_interactions: batch['neg_interactions'][i], self.context: batch['contexts'][i],
+                     self.user_sideinfo: batch['user_sideinfo'][i], self.item_sideinfo: batch['item_sideinfo'][i]}
+                opt, loss = self._partial_fit(feed_dict)
+                batch_loss += loss
 
             if epoch % 25 == 0:
-                print(f"The total loss in {epoch}th iteration is: {loss}")
-            if epoch % 100 == 0:
+                print(f"The total loss in {epoch}th iteration is: {batch_loss}")
+            if epoch == 500 or epoch == 1000:
                 self.evaluate(epoch)
 
     def evaluate(self, epoch):
@@ -268,8 +273,8 @@ if __name__ == '__main__':
     learning_rate = 3e-4
     seed = 2021
     ks = '[20, 50]'
-    dataset = 'ml1m'
-    load_data = False
+    dataset = 'ml100k'
+    load_data = True
 
 
     if load_data:
