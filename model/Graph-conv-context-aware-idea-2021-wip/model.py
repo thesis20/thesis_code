@@ -6,13 +6,15 @@ from LoadData import LoadMovieLens
 from tensorflow.python.client import device_lib
 import pickle
 from utility.parser import parse_args
+from collections import defaultdict
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 cpus = [x.name for x in device_lib.list_local_devices() if x.device_type == 'CPU']
 args = parse_args()
 
+
 class CSGCN():
-    def __init__(self, sess, data, emb_dim, epochs, n_layers, batch_size, learning_rate, seed, ks):
+    def __init__(self, sess, data, emb_dim, epochs, n_layers, batch_size, learning_rate, seed, ks, initializer, optimizer):
         self.random_seed = seed
         self.decay = 1e-5
         self.data = data
@@ -22,30 +24,72 @@ class CSGCN():
         self.epochs = epochs
         self.batch_size = batch_size
         self.learning_rate = learning_rate
+        self.initializer = self._set_initializer(initializer)
+        self.optimizer = self._set_optimizer(optimizer)
         self.ks = eval(ks)
         self.evaluator = evaluator()
         self.sess = sess
         self._init_graph()
         print("Initialized graph")
 
+
+        with tf.name_scope('TRAIN_LOSS'):
+            self.train_loss = tf.placeholder(tf.float32)
+            tf.summary.scalar('train_loss', self.train_loss)
+            self.train_mf_loss = tf.placeholder(tf.float32)
+            tf.summary.scalar('train_mf_loss', self.train_mf_loss)
+            self.train_emb_loss = tf.placeholder(tf.float32)
+            tf.summary.scalar('train_emb_loss', self.train_emb_loss)
+            self.train_reg_loss = tf.placeholder(tf.float32)
+        self.merged_train_loss = tf.summary.merge(
+            tf.get_collection(tf.GraphKeys.SUMMARIES, 'TRAIN_LOSS'))
+
+        with tf.name_scope('TEST_ACC'):
+            self.test_hr_first = tf.placeholder(tf.float32)
+            tf.summary.scalar('test_hr_first', self.test_hr_first)
+            self.test_ndcg_first = tf.placeholder(tf.float32)
+            tf.summary.scalar('test_ndcg_first', self.test_ndcg_first)
+            self.test_mrr_first = tf.placeholder(tf.float32)
+            tf.summary.scalar('test_mrr_first', self.test_mrr_first)
+            self.test_hr_last = tf.placeholder(tf.float32)
+            tf.summary.scalar('test_hr_last', self.test_hr_last)
+            self.test_ndcg_last = tf.placeholder(tf.float32)
+            tf.summary.scalar('test_ndcg_last', self.test_ndcg_last)
+            self.test_mrr_last = tf.placeholder(tf.float32)
+            tf.summary.scalar('test_mrr_last', self.test_mrr_last)
+        self.merged_test_acc = tf.summary.merge(
+            tf.get_collection(tf.GraphKeys.SUMMARIES, 'TEST_ACC'))
+
+    def _set_optimizer(self, optimizer):
+        if optimizer == 'adam':
+            return tf.train.AdamOptimizer(self.learning_rate)
+        if optimizer == 'adagrad':
+            return tf.train.AdagradOptimizer(self.learning_rate)
+        else:
+            raise Exception("No optimizer set")
+
+    def _set_initializer(self, initializer):
+        if initializer == 'normal':
+            return tf.random_normal_initializer(seed=self.random_seed, stddev=0.01)
+        elif initializer == 'xavier':
+            return tf.contrib.layers.xavier_initializer(seed=self.random_seed)
+        else:
+            raise Exception("No initializer set")
+
     def _init_weights(self):
         # TODO: n_context, n_user_sideinfo, n_item_sideinfo
 
         all_weights = dict()
-        rn = tf.random_normal_initializer(stddev=0.01)
-        xavier = tf.contrib.layers.xavier_initializer()
 
-        initializer = xavier
-
-        all_weights['user_embedding'] = tf.Variable(initializer([self.data.n_users, self.emb_dim]),
+        all_weights['user_embedding'] = tf.Variable(self.initializer([self.data.n_users, self.emb_dim]),
                                                     name='user_embedding')
-        all_weights['item_embedding'] = tf.Variable(initializer([self.data.n_items, self.emb_dim]),
+        all_weights['item_embedding'] = tf.Variable(self.initializer([self.data.n_items, self.emb_dim]),
                                                     name='item_embedding')
-        all_weights['context_embedding'] = tf.Variable(initializer([self.data.n_context, self.emb_dim]),
+        all_weights['context_embedding'] = tf.Variable(self.initializer([self.data.n_context, self.emb_dim]),
                                                        name='context_embedding')
-        all_weights['user_sideinfo_embedding'] = tf.Variable(initializer([self.data.n_user_sideinfo, self.emb_dim]),
+        all_weights['user_sideinfo_embedding'] = tf.Variable(self.initializer([self.data.n_user_sideinfo, self.emb_dim]),
                                                              name='user_sideinfo_embedding')
-        all_weights['item_sideinfo_embedding'] = tf.Variable(initializer([self.data.n_item_sideinfo, self.emb_dim]),
+        all_weights['item_sideinfo_embedding'] = tf.Variable(self.initializer([self.data.n_item_sideinfo, self.emb_dim]),
                                                              name='item_sideinfo_embedding')
 
         # Biases
@@ -86,7 +130,7 @@ class CSGCN():
 
         # Initial weights for BPR
         self.u_g_embeddings_pre = tf.nn.embedding_lookup(
-            self.weights['user_embedding'], self.users)  # TODO: Overvej den her
+            self.weights['user_embedding'], self.users)
         self.pos_i_g_embeddings_pre = tf.nn.embedding_lookup(
             self.weights['item_embedding'], self.pos_interactions)
         self.neg_i_g_embeddings_pre = tf.nn.embedding_lookup(
@@ -112,8 +156,7 @@ class CSGCN():
         self.neg_scores = tf.nn.dropout(self.neg_scores, args.keep_prob)
 
         self.loss = self._bpr_loss(self.pos_scores, self.neg_scores)
-        self.opt = tf.train.AdamOptimizer(
-            self.learning_rate).minimize(self.loss)
+        self.opt = self.optimizer.minimize(self.loss[0])
         self.init = tf.global_variables_initializer()
 
     def _csgcn_layers(self):
@@ -187,7 +230,7 @@ class CSGCN():
         emb_loss = self.decay * regularizer
 
         loss = emb_loss + mf_loss
-        return loss
+        return loss, emb_loss, mf_loss
 
     def _convert_sp_mat_to_sp_tensor(self, adj_mat):
         coo = adj_mat.tocoo().astype(np.float32)
@@ -198,21 +241,54 @@ class CSGCN():
         feed_dict = {self.users: data['user_ids'], self.pos_interactions: data['pos_interactions'],
                      self.neg_interactions: data['neg_interactions'], self.context: data['contexts'],
                      self.user_sideinfo: data['user_sideinfo'], self.item_sideinfo: data['item_sideinfo']}
-        return self.sess.run([self.opt, self.loss], feed_dict=feed_dict)
+        return self.sess.run([self.loss, self.opt], feed_dict=feed_dict)
 
     def train(self):
+        # Tensorboard
+        setup = '[' + args.dataset + '] init[' + str(args.initializer) + '] lr[' + args.lr +'] optim[' + str(args.optimizer) + '] layers[' + str(
+            args.layers) + '] batch[' + str(args.batch) + '] keep[' + str(args.keep_prob) + '] ks' + str(args.ks)
+        tensorboard_model_path = 'tensorboard/' + setup + '/'
+        if not os.path.exists(tensorboard_model_path):
+            os.makedirs(tensorboard_model_path)
+        run_time = 1
+        while (True):
+            if os.path.exists(tensorboard_model_path + '/run_' + str(run_time)):
+                run_time += 1
+            else:
+                break
+        train_writer = tf.summary.FileWriter(
+            tensorboard_model_path + '/run_' + str(run_time), sess.graph)
+
         # Initialize variables
         self.sess.run(self.init)
 
         # Run epochs
         for epoch in range(0, self.epochs + 1):
             batch = self.data.sampler(self.batch_size)
-            opt, loss = self._partial_fit(batch)
+
+            # Run training on batch
+            losses, _ = self._partial_fit(batch)
+            loss, emb_loss, mf_loss = losses
+
+            # Run to get summary of train loss
+            summary_train_loss = sess.run(self.merged_train_loss,
+                                          feed_dict={self.train_loss: loss,
+                                                     self.train_mf_loss: mf_loss,
+                                                     self.train_emb_loss: emb_loss})
+            train_writer.add_summary(summary_train_loss, epoch)
 
             if epoch % 25 == 0:
                 print(f"The total loss in {epoch}th iteration is: {loss}")
             if epoch % args.eval_interval == 0:
-                self.evaluate(epoch)
+                ret = self.evaluate(epoch)
+                summary_test_acc = sess.run(self.merged_test_acc, feed_dict={self.test_hr_first: ret['hr'][0],
+                                                                             self.test_hr_last: ret['hr'][-1],
+                                                                             self.test_ndcg_first: ret['ndcg'][0],
+                                                                             self.test_ndcg_last: ret['ndcg'][-1],
+                                                                             self.test_mrr_first: ret['mrr'][0],
+                                                                             self.test_mrr_last: ret['mrr'][-1]
+                                                                             })
+                train_writer.add_summary(summary_test_acc, epoch)
 
     def evaluate(self, epoch):
         scores = dict()
@@ -252,9 +328,14 @@ class CSGCN():
 
             scores[userId] = pos_scores
 
+        ret = defaultdict(list)
         for k in self.ks:
-            self.evaluator.evaluate_loo(
+            hr, ndcg, mrr = self.evaluator.evaluate_loo(
                 scores, self.data.user_ground_truth_dict, k, epoch)
+            ret['hr'].append(hr)
+            ret['ndcg'].append(ndcg)
+            ret['mrr'].append(mrr)
+        return ret
 
 
 if __name__ == '__main__':
@@ -267,7 +348,8 @@ if __name__ == '__main__':
     ks = args.ks
     dataset = args.dataset
     load_data = args.load
-
+    initializer = args.initializer
+    optimizer = args.optimizer
 
     if load_data == 1:
         path = 'checkpoints/' + dataset + '.chk'
@@ -281,5 +363,5 @@ if __name__ == '__main__':
 
     with tf.Session() as sess:
         model = CSGCN(sess, data, emb_dim, epochs, n_layers,
-                      batch_size, learning_rate, seed, ks)
+                      batch_size, learning_rate, seed, ks, initializer, optimizer)
         model.train()

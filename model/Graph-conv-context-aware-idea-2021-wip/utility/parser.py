@@ -18,12 +18,14 @@ def parse_args():
                         help='Batch size.')
     parser.add_argument('--lr', type=float, default=3e-4,
                         help='Learning rate.')
-    parser.add_argument('--dropout', type=int, default=0,
-                        help='0: Disable node dropout, 1: Activate node dropout')
     parser.add_argument('--keep_prob', type=float, default='0.8',
                         help='Keep probability w.r.t. node dropout (i.e., 1-dropout_ratio) for each deep layer. 1: no dropout.')
     parser.add_argument('--ks', nargs='?', default='[20, 50]',
                         help='Top k(s) to recommend')
-    parser.add_argument('--eval_interval', type=int, default=500,
+    parser.add_argument('--eval_interval', type=int, default=100,
                         help='Interval between evaluations (epochs)')
+    parser.add_argument('--initializer', nargs='?', default='xavier',
+                    help='Choose an initializer from {xavier, normal}')
+    parser.add_argument('--optimizer', nargs='?', default='adam',
+                help='Choose a dataset from {adam, adagrad}')
     return parser.parse_args()
