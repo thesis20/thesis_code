@@ -16,7 +16,7 @@ args = parse_args()
 class CSGCN():
     def __init__(self, sess, data, emb_dim, epochs, n_layers, batch_size, learning_rate, seed, ks, initializer, optimizer):
         self.random_seed = seed
-        self.decay = 1e-5
+        self.decay = args.decay
         self.data = data
         print("Loaded data")
         self.n_layers = n_layers
@@ -63,8 +63,12 @@ class CSGCN():
     def _set_optimizer(self, optimizer):
         if optimizer == 'adam':
             return tf.train.AdamOptimizer(self.learning_rate)
-        if optimizer == 'adagrad':
+        elif optimizer == 'adagrad':
             return tf.train.AdagradOptimizer(self.learning_rate)
+        elif optimizer == 'RMSProp':
+            return tf.train.RMSPropOptimizer(self.learning_rate)
+        elif optimizer == 'Adadelta':
+            return tf.train.AdadeltaOptimizer(self.learning_rate)
         else:
             raise Exception("No optimizer set")
 
@@ -73,6 +77,10 @@ class CSGCN():
             return tf.random_normal_initializer(seed=self.random_seed, stddev=0.01)
         elif initializer == 'xavier':
             return tf.contrib.layers.xavier_initializer(seed=self.random_seed)
+        elif initializer == 'glorot':
+            return tf.glorot_uniform_initializer(seed=self.random_seed)
+        elif initializer == 'glorot_normal':
+            return tf.glorot_normal_initializer(seed=self.random_seed)
         else:
             raise Exception("No initializer set")
 
@@ -226,7 +234,7 @@ class CSGCN():
             self.pos_i_g_embeddings_pre) + tf.nn.l2_loss(self.neg_i_g_embeddings_pre)
         regularizer = regularizer / self.batch_size
 
-        mf_loss = tf.reduce_sum(-tf.log(tf.nn.sigmoid(pos_scores - neg_scores)))
+        mf_loss = tf.reduce_mean(-tf.log(tf.nn.sigmoid(pos_scores - neg_scores)))
         emb_loss = self.decay * regularizer
 
         loss = emb_loss + mf_loss
@@ -245,8 +253,8 @@ class CSGCN():
 
     def train(self):
         # tennsorboard
-        setup = '[' + args.dataset + '] init[' + str(args.initializer) + '] lr[' + args.lr +'] optim[' + str(args.optimizer) + '] layers[' + str(
-            args.layers) + '] batch[' + str(args.batch) + '] keep[' + str(args.keep_prob) + '] ks' + str(args.ks)
+        setup = '[' + args.dataset + '] init[' + str(args.initializer) + '] lr[' + str(args.lr) +'] optim[' + str(args.optimizer) + '] layers[' + str(
+            args.layers) + '] batch[' + str(args.batch) + '] keep[' + str(args.keep_prob) + '] decay[' + str(args.decay) + '] ks' + str(args.ks)
         tensorboard_model_path = 'tensorboard/' + setup + '/'
         if not os.path.exists(tensorboard_model_path):
             os.makedirs(tensorboard_model_path)
