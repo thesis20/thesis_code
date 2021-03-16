@@ -83,6 +83,7 @@ class evaluator():
         ndcg_value = sum(ndcgs) / len(ndcgs)
         mrr_value = sum(mrrs) / len(mrrs)
         
+
         print(f'\nEpoch: {epoch}')
         print(f'HR@{topk}: {round(hr_value*100, 3)}')
         print(f'NDCG@{topk}: {round(ndcg_value*100, 3)}')
@@ -95,6 +96,8 @@ class evaluator():
         line += "MRR: " + str(round(mrr_value*100, 10)) + "%\n"
         f.write(line)
         f.close()
+        return hr_value, ndcg_value, mrr_value
+
     
     def evaluate(self, score_dict, ground_truth_dict, topk, epoch):
         sorted_scores = {}
