@@ -252,7 +252,7 @@ class CSGCN():
         return self.sess.run([self.loss, self.opt], feed_dict=feed_dict)
 
     def train(self):
-        # tennsorboard
+        # tensorboard file name
         setup = '[' + args.dataset + '] init[' + str(args.initializer) + '] lr[' + str(args.lr) +'] optim[' + str(args.optimizer) + '] layers[' + str(
             args.layers) + '] batch[' + str(args.batch) + '] keep[' + str(args.keep_prob) + '] decay[' + str(args.decay) + '] ks' + str(args.ks)
         tensorboard_model_path = 'tensorboard/' + setup + '/'
