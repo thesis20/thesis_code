@@ -23,8 +23,6 @@ class CSGCN():
         self.batch_size = batch_size
         self.learning_rate = learning_rate
         self.ks = eval(ks)
-        self.use_l2 = False
-        self.use_dropout = True
         self.evaluator = evaluator()
         self.sess = sess
         self._init_graph()
@@ -110,9 +108,8 @@ class CSGCN():
         self.neg_scores = self._predict(self.user_embeddings, self.neg_interactions_embeddings,
                                         self.context_embeddings, self.user_bias, self.neg_item_bias)
 
-        if self.use_dropout:
-            self.pos_scores = tf.nn.dropout(self.pos_scores, args.keep_prob)
-            self.neg_scores = tf.nn.dropout(self.neg_scores, args.keep_prob)
+        self.pos_scores = tf.nn.dropout(self.pos_scores, args.keep_prob)
+        self.neg_scores = tf.nn.dropout(self.neg_scores, args.keep_prob)
 
         self.loss = self._bpr_loss(self.pos_scores, self.neg_scores)
         self.opt = tf.train.AdamOptimizer(
