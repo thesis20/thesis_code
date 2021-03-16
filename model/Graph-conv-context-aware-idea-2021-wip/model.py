@@ -7,6 +7,7 @@ from tensorflow.python.client import device_lib
 import pickle
 from utility.parser import parse_args
 from collections import defaultdict
+import random
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 cpus = [x.name for x in device_lib.list_local_devices() if x.device_type == 'CPU']
@@ -16,6 +17,7 @@ args = parse_args()
 class CSGCN():
     def __init__(self, sess, data):
         self.random_seed = args.seed
+        random.seed(self.random_seed)
         self.decay = args.decay
         self.data = data
         print("Loaded data")
@@ -301,8 +303,7 @@ class CSGCN():
     def evaluate(self, epoch):
         scores = dict()
 
-        unique_item_ids = self.data.test_df[self.data.itemid_column_name].unique(
-        )
+        unique_item_ids = self.data.test_df[self.data.itemid_column_name].unique()
 
         for _, row in self.data.test_df.iterrows():
             userId = row[self.data.userid_column_name]
@@ -320,7 +321,11 @@ class CSGCN():
             for item in self.data.test_df[self.data.itemid_column_name].unique():
                 item_index = self.data.item_offset_dict[item]
                 item_sideinfo = self.data.item_sideinfo_dict[item]
-
+                
+                # if the item has more than one genre, choose a random one
+                if len(item_sideinfo) > 1:
+                    item_sideinfo = [random.choice(item_sideinfo)]
+                
                 user_indexes.append([user_index])
                 user_sideinfos.append(user_sideinfo)
                 item_indexes.append([item_index])
