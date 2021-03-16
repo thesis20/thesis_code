@@ -14,19 +14,19 @@ args = parse_args()
 
 
 class CSGCN():
-    def __init__(self, sess, data, emb_dim, epochs, n_layers, batch_size, learning_rate, seed, ks, initializer, optimizer):
-        self.random_seed = seed
+    def __init__(self, sess, data):
+        self.random_seed = args.seed
         self.decay = args.decay
         self.data = data
         print("Loaded data")
-        self.n_layers = n_layers
-        self.emb_dim = emb_dim
-        self.epochs = epochs
-        self.batch_size = batch_size
-        self.learning_rate = learning_rate
-        self.initializer = self._set_initializer(initializer)
-        self.optimizer = self._set_optimizer(optimizer)
-        self.ks = eval(ks)
+        self.n_layers = args.layers
+        self.emb_dim = args.embed_size
+        self.epochs = args.epoch
+        self.batch_size = args.batch
+        self.learning_rate = args.lr
+        self.initializer = self._set_initializer(args.initializer)
+        self.optimizer = self._set_optimizer(args.optimizer)
+        self.ks = eval(args.ks)
         self.evaluator = evaluator()
         self.sess = sess
         self._init_graph()
@@ -347,29 +347,18 @@ class CSGCN():
 
 
 if __name__ == '__main__':
-    emb_dim = args.embed_size
-    epochs = args.epoch
-    n_layers = args.layers
-    batch_size = args.batch
-    learning_rate = args.lr
-    seed = args.seed
-    ks = args.ks
     dataset = args.dataset
-    load_data = args.load
-    initializer = args.initializer
-    optimizer = args.optimizer
 
-    if load_data == 1:
+    if args.load == 1:
         path = 'checkpoints/' + dataset + '.chk'
         file_data = open(path, 'rb')
         data = pickle.load(file_data)
     else:
-        data = LoadMovieLens(random_seed=seed, dataset=dataset)
+        data = LoadMovieLens(random_seed=args.seed, dataset=dataset)
         path = 'checkpoints/' + dataset + '.chk'
         file_data = open(path, 'wb')
         pickle.dump(data, file_data)
 
     with tf.Session() as sess:
-        model = CSGCN(sess, data, emb_dim, epochs, n_layers,
-                      batch_size, learning_rate, seed, ks, initializer, optimizer)
+        model = CSGCN(sess, data)
         model.train()
