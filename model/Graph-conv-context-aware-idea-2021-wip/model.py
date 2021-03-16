@@ -14,19 +14,19 @@ args = parse_args()
 
 
 class CSGCN():
-    def __init__(self, sess, data, emb_dim, epochs, n_layers, batch_size, learning_rate, seed, ks, initializer, optimizer):
-        self.random_seed = seed
-        self.decay = 1e-5
+    def __init__(self, sess, data):
+        self.random_seed = args.seed
+        self.decay = args.decay
         self.data = data
         print("Loaded data")
-        self.n_layers = n_layers
-        self.emb_dim = emb_dim
-        self.epochs = epochs
-        self.batch_size = batch_size
-        self.learning_rate = learning_rate
-        self.initializer = self._set_initializer(initializer)
-        self.optimizer = self._set_optimizer(optimizer)
-        self.ks = eval(ks)
+        self.n_layers = args.layers
+        self.emb_dim = args.embed_size
+        self.epochs = args.epoch
+        self.batch_size = args.batch
+        self.learning_rate = args.lr
+        self.initializer = self._set_initializer(args.initializer)
+        self.optimizer = self._set_optimizer(args.optimizer)
+        self.ks = eval(args.ks)
         self.evaluator = evaluator()
         self.sess = sess
         self._init_graph()
@@ -63,8 +63,12 @@ class CSGCN():
     def _set_optimizer(self, optimizer):
         if optimizer == 'adam':
             return tf.train.AdamOptimizer(self.learning_rate)
-        if optimizer == 'adagrad':
+        elif optimizer == 'adagrad':
             return tf.train.AdagradOptimizer(self.learning_rate)
+        elif optimizer == 'RMSProp':
+            return tf.train.RMSPropOptimizer(self.learning_rate)
+        elif optimizer == 'Adadelta':
+            return tf.train.AdadeltaOptimizer(self.learning_rate)
         else:
             raise Exception("No optimizer set")
 
@@ -73,6 +77,10 @@ class CSGCN():
             return tf.random_normal_initializer(seed=self.random_seed, stddev=0.01)
         elif initializer == 'xavier':
             return tf.contrib.layers.xavier_initializer(seed=self.random_seed)
+        elif initializer == 'glorot':
+            return tf.glorot_uniform_initializer(seed=self.random_seed)
+        elif initializer == 'glorot_normal':
+            return tf.glorot_normal_initializer(seed=self.random_seed)
         else:
             raise Exception("No initializer set")
 
@@ -226,7 +234,7 @@ class CSGCN():
             self.pos_i_g_embeddings_pre) + tf.nn.l2_loss(self.neg_i_g_embeddings_pre)
         regularizer = regularizer / self.batch_size
 
-        mf_loss = tf.reduce_sum(-tf.log(tf.nn.sigmoid(pos_scores - neg_scores)))
+        mf_loss = tf.reduce_mean(-tf.log(tf.nn.sigmoid(pos_scores - neg_scores)))
         emb_loss = self.decay * regularizer
 
         loss = emb_loss + mf_loss
@@ -244,9 +252,9 @@ class CSGCN():
         return self.sess.run([self.loss, self.opt], feed_dict=feed_dict)
 
     def train(self):
-        # Tensorboard
-        setup = '[' + args.dataset + '] init[' + str(args.initializer) + '] lr[' + args.lr +'] optim[' + str(args.optimizer) + '] layers[' + str(
-            args.layers) + '] batch[' + str(args.batch) + '] keep[' + str(args.keep_prob) + '] ks' + str(args.ks)
+        # tensorboard file name
+        setup = '[' + args.dataset + '] init[' + str(args.initializer) + '] lr[' + str(args.lr) +'] optim[' + str(args.optimizer) + '] layers[' + str(
+            args.layers) + '] batch[' + str(args.batch) + '] keep[' + str(args.keep_prob) + '] decay[' + str(args.decay) + '] ks' + str(args.ks)
         tensorboard_model_path = 'tensorboard/' + setup + '/'
         if not os.path.exists(tensorboard_model_path):
             os.makedirs(tensorboard_model_path)
@@ -339,29 +347,18 @@ class CSGCN():
 
 
 if __name__ == '__main__':
-    emb_dim = args.embed_size
-    epochs = args.epoch
-    n_layers = args.layers
-    batch_size = args.batch
-    learning_rate = args.lr
-    seed = args.seed
-    ks = args.ks
     dataset = args.dataset
-    load_data = args.load
-    initializer = args.initializer
-    optimizer = args.optimizer
 
-    if load_data == 1:
+    if args.load == 1:
         path = 'checkpoints/' + dataset + '.chk'
         file_data = open(path, 'rb')
         data = pickle.load(file_data)
     else:
-        data = LoadMovieLens(random_seed=seed, dataset=dataset)
+        data = LoadMovieLens(random_seed=args.seed, dataset=dataset)
         path = 'checkpoints/' + dataset + '.chk'
         file_data = open(path, 'wb')
         pickle.dump(data, file_data)
 
     with tf.Session() as sess:
-        model = CSGCN(sess, data, emb_dim, epochs, n_layers,
-                      batch_size, learning_rate, seed, ks, initializer, optimizer)
+        model = CSGCN(sess, data)
         model.train()
