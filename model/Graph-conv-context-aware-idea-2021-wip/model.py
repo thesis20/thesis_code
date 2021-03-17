@@ -18,22 +18,24 @@ class CSGCN():
     def __init__(self, sess, data):
         self.random_seed = args.seed
         random.seed(self.random_seed)
+        tf.set_random_seed(self.random_seed)
         self.decay = args.decay
         self.data = data
         print("Loaded data")
-        self.n_layers = args.layers
+        self.weight_size = eval(args.layer_size)
+        self.n_layers = len(self.weight_size)
         self.emb_dim = args.embed_size
         self.epochs = args.epoch
         self.batch_size = args.batch
         self.learning_rate = args.lr
         self.initializer = self._set_initializer(args.initializer)
         self.optimizer = self._set_optimizer(args.optimizer)
+        self.mess_dropout = eval(args.mess_dropout)
         self.ks = eval(args.ks)
         self.evaluator = evaluator()
         self.sess = sess
         self._init_graph()
         print("Initialized graph")
-
 
         with tf.name_scope('TRAIN_LOSS'):
             self.train_loss = tf.placeholder(tf.float32)
@@ -108,10 +110,21 @@ class CSGCN():
         all_weights['item_bias'] = tf.Variable(
             tf.zeros([self.data.n_items], dtype=tf.float32, name='item_bias'))
 
+        self.weight_size_list = [self.emb_dim] + self.weight_size
+        for k in range(self.n_layers):
+            all_weights['W_gc_%d' % k] = tf.Variable(
+                self.initializer([self.weight_size_list[k], self.weight_size_list[k+1]]), name='W_gc_%d' % k)
+            all_weights['b_gc_%d' % k] = tf.Variable(
+                self.initializer([1, self.weight_size_list[k+1]]), name='b_gc_%d' % k)
+
+            all_weights['W_bi_%d' % k] = tf.Variable(
+                self.initializer([self.weight_size_list[k], self.weight_size_list[k + 1]]), name='W_bi_%d' % k)
+            all_weights['b_bi_%d' % k] = tf.Variable(
+                self.initializer([1, self.weight_size_list[k + 1]]), name='b_bi_%d' % k)
+
         return all_weights
 
     def _init_graph(self):
-        tf.set_random_seed(self.random_seed)
 
         self.users = tf.placeholder(tf.int32, shape=[None, None])
         self.pos_interactions = tf.placeholder(tf.int32, shape=[None, None])
@@ -198,10 +211,22 @@ class CSGCN():
         all_embeddings = [embs]
 
         for k in range(0, self.n_layers):
-            matmul = tf.sparse_tensor_dense_matmul(uic_adj_mat, embs)
-            embs = matmul
+            side_embeddings = tf.sparse_tensor_dense_matmul(uic_adj_mat, embs)
+            embs = side_embeddings
             # TODO: Implemnter convolution formel, overvej at følge LGCN med NuNi
-            all_embeddings += [matmul]
+            sum_embeddings = tf.nn.leaky_relu(tf.matmul(
+                side_embeddings, self.weights['W_gc_%d' % k]) + self.weights['b_gc_%d' % k])
+
+            bi_embeddings = tf.multiply(embs, side_embeddings)
+            bi_embeddings = tf.nn.leaky_relu(tf.matmul(
+                bi_embeddings, self.weights['W_bi_%d' % k]) + self.weights['b_bi_%d' % k])
+            ego_embeddings = sum_embeddings + bi_embeddings
+
+            # Message dropout
+            ego_embeddings = tf.nn.dropout(
+                ego_embeddings, 1 - self.mess_dropout[k])
+            norm_embeddings = tf.nn.l2_normalize(ego_embeddings, axis=1)
+            all_embeddings += [norm_embeddings]
 
         all_embeddings = tf.stack(all_embeddings, 1)
         all_embeddings = tf.reduce_mean(all_embeddings, axis=1, keepdims=False)
@@ -214,14 +239,16 @@ class CSGCN():
         # TODO: Overvej om vi skal fjerne user embs og bias og tage dem fra self i stedet
         user_emb_sum = tf.reduce_sum(user_embs, 1)
         item_emb_sum = tf.reduce_sum(item_embs, 1)
-        emb_sum = tf.add(user_emb_sum, item_emb_sum)
+        emb_sum = tf.add_n([user_emb_sum, item_emb_sum])
         first_term = tf.square(emb_sum)
 
         user_emb_sq = tf.square(user_embs)
         item_emb_sq = tf.square(item_embs)
+        context_emb_sq = tf.square(context_embs)
+        context_item_sq = tf.multiply(item_emb_sq, context_emb_sq)
         user_emb_sq_sum = tf.reduce_sum(user_emb_sq, 1)
-        item_emb_sq_sum = tf.reduce_sum(item_emb_sq, 1)
-        second_term = tf.add(user_emb_sq_sum, item_emb_sq_sum)
+        item_emb_sq_sum = tf.reduce_sum(context_item_sq, 1)
+        second_term = tf.add_n([user_emb_sq_sum, item_emb_sq_sum])
 
         pred = 0.5 * tf.subtract(first_term, second_term)
 
@@ -255,8 +282,8 @@ class CSGCN():
 
     def train(self):
         # tensorboard file name
-        setup = '[' + args.dataset + '] init[' + str(args.initializer) + '] lr[' + str(args.lr) +'] optim[' + str(args.optimizer) + '] layers[' + str(
-            args.layers) + '] batch[' + str(args.batch) + '] keep[' + str(args.keep_prob) + '] decay[' + str(args.decay) + '] ks' + str(args.ks)
+        setup = '[' + args.dataset + '] init[' + str(args.initializer) + '] lr[' + str(args.lr) + '] optim[' + str(args.optimizer) + '] layers[' + str(
+            args.layer_size) + '] batch[' + str(args.batch) + '] keep[' + str(args.keep_prob) + '] decay[' + str(args.decay) + '] ks' + str(args.ks)
         tensorboard_model_path = 'tensorboard/' + setup + '/'
         if not os.path.exists(tensorboard_model_path):
             os.makedirs(tensorboard_model_path)
@@ -321,11 +348,10 @@ class CSGCN():
             for item in self.data.test_df[self.data.itemid_column_name].unique():
                 item_index = self.data.item_offset_dict[item]
                 item_sideinfo = self.data.item_sideinfo_dict[item]
-                
-                # if the item has more than one genre, choose a random one
+
                 if len(item_sideinfo) > 1:
                     item_sideinfo = [random.choice(item_sideinfo)]
-                
+
                 user_indexes.append([user_index])
                 user_sideinfos.append(user_sideinfo)
                 item_indexes.append([item_index])
