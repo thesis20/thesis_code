@@ -75,6 +75,10 @@ class LightGCN(object):
             self.train_rec_last = tf.placeholder(tf.float32)
             #record for top(Ks[-1])
             tf.summary.scalar('train_rec_last', self.train_rec_last)
+            self.train_hit_first = tf.placeholder(tf.float32)
+            tf.summary.scalar('train_hit_first', self.train_hit_first)
+            self.train_hit_last = tf.placeholder(tf.float32)
+            tf.summary.scalar('train_hit_last', self.train_hit_last)
             self.train_ndcg_first = tf.placeholder(tf.float32)
             tf.summary.scalar('train_ndcg_first', self.train_ndcg_first)
             self.train_ndcg_last = tf.placeholder(tf.float32)
@@ -95,8 +99,12 @@ class LightGCN(object):
         with tf.name_scope('TEST_ACC'):
             self.test_rec_first = tf.placeholder(tf.float32)
             tf.summary.scalar('test_rec_first', self.test_rec_first)
+            self.test_hit_first = tf.placeholder(tf.float32)
+            tf.summary.scalar('test_hit_first', self.test_hit_first)
             self.test_rec_last = tf.placeholder(tf.float32)
             tf.summary.scalar('test_rec_last', self.test_rec_last)
+            self.test_hit_last = tf.placeholder(tf.float32)
+            tf.summary.scalar('test_hit_last', self.test_hit_last)
             self.test_ndcg_first = tf.placeholder(tf.float32)
             tf.summary.scalar('test_ndcg_first', self.test_ndcg_first)
             self.test_ndcg_last = tf.placeholder(tf.float32)
@@ -423,7 +431,7 @@ def test_performance(sess, model, users_to_test, drop_flag):
     if model.model_data.loo_eval:
         ret = test_loo(sess, model, users_to_test, drop_flag)
         final_perf = "hit rate=[%s], ndcg=[%s], mrr=[%s]" % \
-            (', '.join(['%.5f' % r for r in ret['hit rate']]),
+            (', '.join(['%.5f' % r for r in ret['hit']]),
             ', '.join(['%.5f' % r for r in ret['ndcg']]),
             ', '.join(['%.5f' % r for r in ret['mrr']]))
     else:
@@ -441,12 +449,14 @@ def train_testing(sess, model, users_to_test, drop_flag, train_set_flag):
         ret = test_loo(sess, model, users_to_test ,drop_flag, train_set_flag)
         perf_str = 'Epoch %d: train==[%.5f=%.5f + %.5f + %.5f], hit rate=[%s], ndcg=[%s], mrr=[%s]' % \
                 (epoch, loss, mf_loss, emb_loss, reg_loss, 
-                    ', '.join(['%.5f' % r for r in ret['hit rate']]),
+                    ', '.join(['%.5f' % r for r in ret['hit']]),
                     ', '.join(['%.5f' % r for r in ret['ndcg']]),
                     ', '.join(['%.5f' % r for r in ret['mrr']]))
         print(perf_str)
-        summary_train_acc = sess.run(model.merged_train_acc, feed_dict={model.train_rec_first: ret['hit'][0],
-                                                                        model.train_rec_last: ret['hit'][-1],
+        summary_train_acc = sess.run(model.merged_train_acc, feed_dict={model.train_hit_first: ret['hit'][0],
+                                                                        model.train_hit_last: ret['hit'][-1],
+                                                                        model.train_rec_first: 0,
+                                                                        model.train_rec_last: 0,
                                                                         model.train_ndcg_first: ret['ndcg'][0],
                                                                         model.train_ndcg_last: ret['ndcg'][-1]})
     else:
@@ -459,23 +469,29 @@ def train_testing(sess, model, users_to_test, drop_flag, train_set_flag):
         print(perf_str)
         summary_train_acc = sess.run(model.merged_train_acc, feed_dict={model.train_rec_first: ret['recall'][0],
                                                                         model.train_rec_last: ret['recall'][-1],
+                                                                        model.train_hit_first: 0,
+                                                                        model.train_hit_last: 0,
                                                                         model.train_ndcg_first: ret['ndcg'][0],
                                                                         model.train_ndcg_last: ret['ndcg'][-1]})
     
-    return summary_train_acc
+    return ret, summary_train_acc
 
 def test_testing(sess, model, users_to_test, drop_flag):
     if model.model_data.loo_eval:
-        ret = test(sess, model, users_to_test, drop_flag)
+        ret = test_loo(sess, model, users_to_test, drop_flag)
         summary_test_acc = sess.run(model.merged_test_acc,
-                                feed_dict={model.test_rec_first: ret['hit'][0], model.test_rec_last: ret['hit'][-1],
+                                feed_dict={model.test_hit_first: ret['hit'][0], model.test_hit_last: ret['hit'][-1],
+                                            model.test_rec_first: 0,
+                                            model.test_rec_last: 0,
                                             model.test_ndcg_first: ret['ndcg'][0], model.test_ndcg_last: ret['ndcg'][-1]})
     else:
         ret = test(sess, model, users_to_test, drop_flag)
         summary_test_acc = sess.run(model.merged_test_acc,
                                     feed_dict={model.test_rec_first: ret['recall'][0], model.test_rec_last: ret['recall'][-1],
+                                                model.test_hit_first: 0,
+                                                model.test_hit_last: 0,
                                                 model.test_ndcg_first: ret['ndcg'][0], model.test_ndcg_last: ret['ndcg'][-1]})
-    return summary_test_acc
+    return ret, summary_test_acc
 
 # parallelized sampling on CPU 
 class sample_thread(threading.Thread):
@@ -689,7 +705,7 @@ if __name__ == '__main__':
                 print(perf_str)
             continue
         users_to_test = list(data_generator.train_items.keys())
-        summary_train_acc = train_testing(sess, model, users_to_test, drop_flag=True, train_set_flag=1)
+        ret, summary_train_acc = train_testing(sess, model, users_to_test, drop_flag=True, train_set_flag=1)
         train_writer.add_summary(summary_train_acc, epoch // 20)
         '''
         *********************************************************
@@ -722,7 +738,7 @@ if __name__ == '__main__':
         train_writer.add_summary(summary_test_loss, epoch // 20)
         t2 = time()
         users_to_test = list(data_generator.test_set.keys())
-        summary_test_acc = test_testing(sess, model, users_to_test, drop_flag=True)
+        ret, summary_test_acc = test_testing(sess, model, users_to_test, drop_flag=True)
         
         train_writer.add_summary(summary_test_acc, epoch // 20)
                                                                                                  
@@ -730,7 +746,7 @@ if __name__ == '__main__':
         t3 = time()
         loss_loger.append(loss)
         
-        if self.data.eval_loo:
+        if model.model_data.loo_eval:
             hit_loger.append(ret['hit'])
             ndcg_loger.append(ret['ndcg'])
             mrr_loger.append(ret['mrr'])
@@ -768,9 +784,14 @@ if __name__ == '__main__':
 
         # *********************************************************
         # save the user & item embeddings for pretraining.
-        if (ret['recall'][0] == cur_best_pre_0 and args.save_flag == 1) or (ret['hit'][0] == cur_best_pre_0 and args.save_flag == 1):
-            save_saver.save(sess, weights_save_path + '/weights', global_step=epoch)
-            print('save the weights in path: ', weights_save_path)
+        if model.model_data.loo_eval:
+            if ret['hit'][0] == cur_best_pre_0 and args.save_flag == 1:
+                save_saver.save(sess, weights_save_path + '/weights', global_step=epoch)
+                print('save the weights in path: ', weights_save_path)
+        else:
+            if ret['recall'][0] == cur_best_pre_0 and args.save_flag == 1:
+                save_saver.save(sess, weights_save_path + '/weights', global_step=epoch)
+                print('save the weights in path: ', weights_save_path)
     recs = np.array(rec_loger)
     pres = np.array(pre_loger)
     ndcgs = np.array(ndcg_loger)

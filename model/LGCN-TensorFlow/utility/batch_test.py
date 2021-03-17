@@ -135,12 +135,12 @@ def test_loo(sess, model, users_to_test, drop_flag=False, train_set_flag=0):
     assert count == n_test_users
     all_result = np.concatenate(all_result, axis=0)
     final_result = np.mean(all_result, axis=0)  # mean
-    final_result = np.reshape(final_result, newshape=[5, max_top])
+    final_result = np.reshape(final_result, newshape=[3, max_top])
     final_result = final_result[:, top_show-1]
-    final_result = np.reshape(final_result, newshape=[5, len(top_show)])
+    final_result = np.reshape(final_result, newshape=[3, len(top_show)])
     result['hit'] += final_result[0]
     result['ndcg'] += final_result[1]
-    result['mrr'] += final_result[3]
+    result['mrr'] += final_result[2]
     return result            
 
 
