@@ -14,7 +14,7 @@ def argmax_top_k(a, top_k=50):
 def hit(rank, ground_truth):
     last_idx = sys.maxsize
     for idx, item in enumerate(rank):
-        if item == ground_truth:
+        if item in ground_truth:
             last_idx = idx
             break
     result = np.zeros(len(rank), dtype=np.float32)
@@ -25,7 +25,7 @@ def hit(rank, ground_truth):
 def ndcg(rank, ground_truth):
     last_idx = sys.maxsize
     for idx, item in enumerate(rank):
-        if item == ground_truth:
+        if item in ground_truth:
             last_idx = idx
             break
     result = np.zeros(len(rank), dtype=np.float32)
@@ -36,7 +36,7 @@ def ndcg(rank, ground_truth):
 def mrr(rank, ground_truth):
     last_idx = sys.maxsize
     for idx, item in enumerate(rank):
-        if item == ground_truth:
+        if item in ground_truth:
             last_idx = idx
             break
     result = np.zeros(len(rank), dtype=np.float32)
