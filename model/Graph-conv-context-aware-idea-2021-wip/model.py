@@ -21,7 +21,9 @@ class CSGCN():
         self.decay = args.decay
         self.data = data
         print("Loaded data")
-        self.n_layers = args.layers
+        self.weight_size = eval(args.weight_size)
+        self.n_layers = len(self.weight_size)
+        self.mess_dropout = eval(args.mess_dropout)
         self.emb_dim = args.embed_size
         self.epochs = args.epoch
         self.batch_size = args.batch
@@ -107,6 +109,18 @@ class CSGCN():
             tf.zeros([self.data.n_users], dtype=tf.float32, name='user_bias'))
         all_weights['item_bias'] = tf.Variable(
             tf.zeros([self.data.n_items], dtype=tf.float32, name='item_bias'))
+
+        self.weight_size_list = [self.emb_dim] + self.weight_size
+        for k in range(self.n_layers):
+            all_weights['W_gc_%d' % k] = tf.Variable(
+                self.initializer([self.weight_size_list[k], self.weight_size_list[k+1]]), name='W_gc_%d' % k)
+            all_weights['b_gc_%d' % k] = tf.Variable(
+                self.initializer([1, self.weight_size_list[k+1]]), name='b_gc_%d' % k)
+
+            all_weights['W_bi_%d' % k] = tf.Variable(
+                self.initializer([self.weight_size_list[k], self.weight_size_list[k + 1]]), name='W_bi_%d' % k)
+            all_weights['b_bi_%d' % k] = tf.Variable(
+                self.initializer([1, self.weight_size_list[k + 1]]), name='b_bi_%d' % k)
 
         return all_weights
 
@@ -198,10 +212,20 @@ class CSGCN():
         all_embeddings = [embs]
 
         for k in range(0, self.n_layers):
-            matmul = tf.sparse_tensor_dense_matmul(uic_adj_mat, embs)
-            embs = matmul
-            # TODO: Implemnter convolution formel, overvej at følge LGCN med NuNi
-            all_embeddings += [matmul]
+            side_embeddings = tf.sparse_tensor_dense_matmul(uic_adj_mat, embs)
+            embs = side_embeddings
+            sum_embeddings = tf.nn.leaky_relu(tf.matmul(
+                side_embeddings, self.weights['W_gc_%d' % k]) + self.weights['b_gc_%d' % k])
+
+            bi_embeddings = tf.multiply(embs, side_embeddings)
+            bi_embeddings = tf.nn.leaky_relu(tf.matmul(
+                bi_embeddings, self.weights['W_bi_%d' % k]) + self.weights['b_bi_%d' % k])
+            ego_embeddings = sum_embeddings + bi_embeddings
+
+            # Message dropout
+            ego_embeddings = tf.nn.dropout(ego_embeddings, 1 - self.mess_dropout[k])
+            norm_embeddings = tf.nn.l2_normalize(ego_embeddings, axis=1)
+            all_embeddings += [norm_embeddings]
 
         all_embeddings = tf.stack(all_embeddings, 1)
         all_embeddings = tf.reduce_mean(all_embeddings, axis=1, keepdims=False)
@@ -256,7 +280,7 @@ class CSGCN():
     def train(self):
         # tensorboard file name
         setup = '[' + args.dataset + '] init[' + str(args.initializer) + '] lr[' + str(args.lr) +'] optim[' + str(args.optimizer) + '] layers[' + str(
-            args.layers) + '] batch[' + str(args.batch) + '] keep[' + str(args.keep_prob) + '] decay[' + str(args.decay) + '] ks' + str(args.ks)
+            args.weight_size) + '] batch[' + str(args.batch) + '] keep[' + str(args.keep_prob) + '] decay[' + str(args.decay) + '] ks' + str(args.ks)
         tensorboard_model_path = 'tensorboard/' + setup + '/'
         if not os.path.exists(tensorboard_model_path):
             os.makedirs(tensorboard_model_path)
