@@ -4,9 +4,11 @@ Dataloader
 '''
 import pandas as pd
 from scipy import sparse
+from scipy.linalg import fractional_matrix_power
 import numpy as np
 import random
 from sklearn.preprocessing import normalize
+import math as m
 
 
 class LoadMovieLens():
@@ -131,6 +133,7 @@ class LoadMovieLens():
                 offset += 1
 
         self.user_offset_dict = user_offset_dict
+        self.user_offset_to_id_dict = dict((v,k) for k,v in user_offset_dict.items())
         self.item_offset_dict = item_offset_dict
         self.user_sideinfo_offset_dict = user_sideinfo_offset_dict
         self.item_sideinfo_offset_dict = item_sideinfo_offset_dict
@@ -290,11 +293,16 @@ class LoadMovieLens():
                 print(
                     f'user: {user_index}, item_index: {item_index}, item_offset: {item_offset}, user_offset: {user_offset}')
                 raise e
+            
+        #add 2 times identity matrix
+        for i in range(self.n_context):
+            offset = self.n_users + self.n_items
+            adj_mat[i + offset,i + offset] = 2
 
             #   U  I  C
             # U 0  R  uc
             # I Rt 0  ic
-            # C 0  0  0
+            # C 0  0  2I
 
         print("  - User sideinfo matrix")
         for userId in self.train_df[self.userid_column_name].unique():
@@ -318,12 +326,15 @@ class LoadMovieLens():
 
         print("  - Normalizing user sideinfo adj")
         norm_us_adj_mat = self.normalize_sideinfo(user_sideinfo_adj_mat)
+        
         print("  - Normalizing item sideinfo adj")
         norm_is_adj_mat = self.normalize_sideinfo(item_sideinfo_adj_mat)
+        
         print("  - Normalizing full adj")
         norm_adj_mat = self._normalize_adj_matrix(adj_mat)
+        sym_norm_adj_mat = self.symmetric_normalize(adj_mat)
 
-        return adj_mat, user_sideinfo_adj_mat, item_sideinfo_adj_mat, norm_adj_mat, norm_us_adj_mat, norm_is_adj_mat
+        return adj_mat, user_sideinfo_adj_mat, item_sideinfo_adj_mat, sym_norm_adj_mat, norm_us_adj_mat, norm_is_adj_mat
 
     def _normalize_adj_matrix(self, x):
 
@@ -379,6 +390,31 @@ class LoadMovieLens():
                     matrix_copy[row, col] = 1.0/iu_counter[row]  # (2,1)
 
         return matrix_copy
+    
+    def symmetric_normalize(self, x):
+        #sqrt(2)*D^-(1/2)*A
+        #D^-(1/2)*A*D^-(1/2)
+        mat_size = self.n_users + self.n_items + self.n_context
+        diagonal_mat = sparse.dok_matrix(
+            (mat_size, mat_size), dtype=np.float32)
+        for i in range(mat_size):
+            non_zero_count = x[i].count_nonzero()
+            diagonal_mat[i,i] = non_zero_count
+            #if non_zero_count > 0 and i < self.n_users:
+                #print('row', i, 'is', non_zero_count)
+        frac_diagonal_mat = diagonal_mat.power(-0.5)
+        #sqrt(2)*D^-(1/2)*A
+        frac_mul_adj_mat = frac_diagonal_mat.dot(x)
+        result = m.sqrt(2)*frac_mul_adj_mat
+        
+        rows, cols, vals = sparse.find(result)
+        li = list(zip(rows, cols, vals))
+        # for row, col, val in li:
+        #     print(diagonal_mat[row,row])
+        #     print(row, col, val)
+            
+        return result
+        
 
     def normalize_sideinfo(self, x):
         matrix_copy = sparse.dok_matrix(x.shape, dtype=np.float32)
