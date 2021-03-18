@@ -31,5 +31,5 @@ def parse_args():
     parser.add_argument('--initializer', nargs='?', default='glorot',
                     help='Choose an initializer from {xavier, normal, glorot, glorot_normal}')
     parser.add_argument('--optimizer', nargs='?', default='adam',
-                help='Choose a dataset from {adam, adagrad, RMSProp, Adadelta}')
+                help='Choose an optimizer from {adam, adagrad, RMSProp, Adadelta}')
     return parser.parse_args()
