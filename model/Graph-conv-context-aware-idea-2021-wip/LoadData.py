@@ -11,7 +11,7 @@ import math as m
 
 
 class LoadMovieLens():
-    def __init__(self, random_seed, dataset='ml100k'):
+    def __init__(self, random_seed, dataset='ml100k', eval_method='fold'):
 
         if dataset == 'ml100k':
             self.genrelist = ['unknown', 'action', 'adventure', 'animation',
@@ -36,6 +36,7 @@ class LoadMovieLens():
             self.itemid_column_name = 'movieId'
             self.path = 'Data/ml1m/'
 
+        self.eval_method = eval_method
         self.train_file = self.path + "train.txt"
         self.test_file = self.path + "test.txt"
         self.full_file = self.path + "out.txt"
@@ -50,7 +51,7 @@ class LoadMovieLens():
         self.n_train_items, self.n_test_items, self.n_items = self.item_counter()
         self.n_user_sideinfo, self.n_item_sideinfo = self.sideinfo_counter()
         self.n_context = self.context_counter()
-        # self.context_test_combinations = self.get_unique_train_contexts()
+        self.context_test_combinations = self.get_test_context_combinations()
         self.n_train_interactions = len(self.train_df.index)
         print("Creating adj matrices")
         self.uic_adj_mat, self.us_adj_mat, self.is_adj_mat, self.norm_adj_mat, self.norm_us_adj_mat, self.norm_is_adj_mat = self._create_adj_mat()
@@ -88,17 +89,22 @@ class LoadMovieLens():
 
     def load_data(self):
         self.full_df = pd.read_csv(self.full_file, sep=',')
-        indices = self.full_df.index
-        test_indices = []
-        for userId in self.full_df[self.userid_column_name].unique():
-            user_df = self.full_df[self.full_df[self.userid_column_name] == userId]
-            newest_entry = user_df.index[user_df['timestamp']
-                                         == user_df['timestamp'].max()].tolist()
-            newest_row = newest_entry[-1]
-            test_indices.append(indices[newest_row])
-        self.test_df = self.full_df.loc[test_indices]
-        train_indices = list(set(indices).difference(test_indices))
-        self.train_df = self.full_df.loc[train_indices]
+        
+        if self.eval_method == 'loo':
+            indices = self.full_df.index
+            test_indices = []
+            for userId in self.full_df[self.userid_column_name].unique():
+                user_df = self.full_df[self.full_df[self.userid_column_name] == userId]
+                newest_entry = user_df.index[user_df['timestamp']
+                                                == user_df['timestamp'].max()].tolist()
+                newest_row = newest_entry[-1]
+                test_indices.append(indices[newest_row])
+            self.test_df = self.full_df.loc[test_indices]
+            train_indices = list(set(indices).difference(test_indices))
+            self.train_df = self.full_df.loc[train_indices]
+        elif self.eval_method == 'fold':
+            self.test_df = pd.read_csv(self.test_file, sep=',')
+            self.train_df = pd.read_csv(self.train_file, sep=',')
 
     def count_dimensions(self):
         user_offset_dict = {}
@@ -134,6 +140,7 @@ class LoadMovieLens():
         self.user_offset_dict = user_offset_dict
         self.user_offset_to_id_dict = dict((v,k) for k,v in user_offset_dict.items())
         self.item_offset_dict = item_offset_dict
+        self.item_offset_to_id_dict = dict((v,k) for k,v in item_offset_dict.items())
         self.user_sideinfo_offset_dict = user_sideinfo_offset_dict
         self.item_sideinfo_offset_dict = item_sideinfo_offset_dict
         self.context_offset_dict = context_offset_dict
@@ -425,3 +432,14 @@ class LoadMovieLens():
                 matrix_copy[row, col] = 1.0/counter[row]
 
         return matrix_copy
+
+    def get_test_context_combinations(self):
+        # get the unique context combinations in the test set
+        combinations = set()
+        
+        for _, row in self.test_df.iterrows():
+            context_list = []
+            for context in self.context_list:
+                context_list.append(self.context_offset_dict[context + str(row[context])])
+            combinations.add(tuple(context_list))
+        return combinations
