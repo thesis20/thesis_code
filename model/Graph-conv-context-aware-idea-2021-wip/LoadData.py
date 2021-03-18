@@ -330,7 +330,7 @@ class LoadMovieLens():
         norm_is_adj_mat = self.normalize_sideinfo(item_sideinfo_adj_mat)
         
         print("  - Normalizing full adj")
-        norm_adj_mat = self._normalize_adj_matrix(adj_mat)
+        # norm_adj_mat = self._normalize_adj_matrix(adj_mat)
         sym_norm_adj_mat = self.symmetric_normalize(adj_mat)
 
         return adj_mat, user_sideinfo_adj_mat, item_sideinfo_adj_mat, sym_norm_adj_mat, norm_us_adj_mat, norm_is_adj_mat
