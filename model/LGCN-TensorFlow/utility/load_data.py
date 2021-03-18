@@ -42,13 +42,13 @@ class Data(object):
         self.n_users = self.full_df['userId'].nunique()
         self.unique_users = self.full_df['userId'].unique()
         loo_interactions = []
-        count = 0
+        #count = 0
         for userid in self.unique_users:
-            if count == 20:
-                break
+            #if count == 20:
+               # break
             for index, row in reverse_full_df.iterrows():
                 if row['userId'] == userid:
-                    count += 1
+                   # count += 1
                     print("there it is ")
                     loo_interactions.append(row)
                     self.train_df.drop(index, inplace=True)
