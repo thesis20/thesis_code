@@ -4,7 +4,6 @@ Dataloader
 '''
 import pandas as pd
 from scipy import sparse
-from scipy.linalg import fractional_matrix_power
 import numpy as np
 import random
 from sklearn.preprocessing import normalize
@@ -392,26 +391,17 @@ class LoadMovieLens():
         return matrix_copy
     
     def symmetric_normalize(self, x):
-        #sqrt(2)*D^-(1/2)*A
-        #D^-(1/2)*A*D^-(1/2)
         mat_size = self.n_users + self.n_items + self.n_context
         diagonal_mat = sparse.dok_matrix(
             (mat_size, mat_size), dtype=np.float32)
         for i in range(mat_size):
             non_zero_count = x[i].count_nonzero()
             diagonal_mat[i,i] = non_zero_count
-            #if non_zero_count > 0 and i < self.n_users:
-                #print('row', i, 'is', non_zero_count)
+
         frac_diagonal_mat = diagonal_mat.power(-0.5)
         #sqrt(2)*D^-(1/2)*A
         frac_mul_adj_mat = frac_diagonal_mat.dot(x)
         result = m.sqrt(2)*frac_mul_adj_mat
-        
-        rows, cols, vals = sparse.find(result)
-        li = list(zip(rows, cols, vals))
-        # for row, col, val in li:
-        #     print(diagonal_mat[row,row])
-        #     print(row, col, val)
             
         return result
         
