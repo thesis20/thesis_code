@@ -83,6 +83,7 @@ class evaluator():
         ndcg_value = sum(ndcgs) / len(ndcgs)
         mrr_value = sum(mrrs) / len(mrrs)
         
+
         print(f'\nEpoch: {epoch}')
         print(f'HR@{topk}: {round(hr_value*100, 3)}')
         print(f'NDCG@{topk}: {round(ndcg_value*100, 3)}')
@@ -95,6 +96,8 @@ class evaluator():
         line += "MRR: " + str(round(mrr_value*100, 10)) + "%\n"
         f.write(line)
         f.close()
+        return hr_value, ndcg_value, mrr_value
+
     
     def evaluate(self, score_dict, ground_truth_dict, topk, epoch):
         sorted_scores = {}
@@ -103,8 +106,8 @@ class evaluator():
         # is returned, which is equal to the corresponding movieid
         # We then take the top k of this sorted list of movieids for all users
         for key, value in score_dict.items():
-            sorted_scores[key] = np.argsort(score_dict[key])[::-1]
-            sorted_scores[key] = sorted_scores[key][:topk]
+            results = sorted(value, key=lambda x: x[1], reverse=True)[:topk]
+            sorted_scores[key] = [a_tuple[0] for a_tuple in results]
         
         precs, recs, f1s, ndcgs = [], [], [], []
         status = 0
@@ -132,6 +135,8 @@ class evaluator():
         line += "NDCG: " + str(ndcg_value) + "\n"
         f.write(line)
         f.close()
+        
+        return precision_value, recall_value, f1_value, ndcg_value
 
     def evaluate_one_user(self, user_topk, ground_truth_user):
         precision = self.precision(user_topk, ground_truth_user)

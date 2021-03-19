@@ -7,10 +7,11 @@ from scipy import sparse
 import numpy as np
 import random
 from sklearn.preprocessing import normalize
+import math as m
 
 
 class LoadMovieLens():
-    def __init__(self, random_seed, dataset='ml100k'):
+    def __init__(self, random_seed, dataset='ml100k', eval_method='fold'):
 
         if dataset == 'ml100k':
             self.genrelist = ['unknown', 'action', 'adventure', 'animation',
@@ -35,6 +36,7 @@ class LoadMovieLens():
             self.itemid_column_name = 'movieId'
             self.path = 'Data/ml1m/'
 
+        self.eval_method = eval_method
         self.train_file = self.path + "train.txt"
         self.test_file = self.path + "test.txt"
         self.full_file = self.path + "out.txt"
@@ -49,7 +51,7 @@ class LoadMovieLens():
         self.n_train_items, self.n_test_items, self.n_items = self.item_counter()
         self.n_user_sideinfo, self.n_item_sideinfo = self.sideinfo_counter()
         self.n_context = self.context_counter()
-        # self.context_test_combinations = self.get_unique_train_contexts()
+        self.context_test_combinations = self.get_test_context_combinations()
         self.n_train_interactions = len(self.train_df.index)
         print("Creating adj matrices")
         self.uic_adj_mat, self.us_adj_mat, self.is_adj_mat, self.norm_adj_mat, self.norm_us_adj_mat, self.norm_is_adj_mat = self._create_adj_mat()
@@ -87,17 +89,22 @@ class LoadMovieLens():
 
     def load_data(self):
         self.full_df = pd.read_csv(self.full_file, sep=',')
-        indices = self.full_df.index
-        test_indices = []
-        for userId in self.full_df[self.userid_column_name].unique():
-            user_df = self.full_df[self.full_df[self.userid_column_name] == userId]
-            newest_entry = user_df.index[user_df['timestamp']
-                                         == user_df['timestamp'].max()].tolist()
-            newest_row = newest_entry[-1]
-            test_indices.append(indices[newest_row])
-        self.test_df = self.full_df.loc[test_indices]
-        train_indices = list(set(indices).difference(test_indices))
-        self.train_df = self.full_df.loc[train_indices]
+        
+        if self.eval_method == 'loo':
+            indices = self.full_df.index
+            test_indices = []
+            for userId in self.full_df[self.userid_column_name].unique():
+                user_df = self.full_df[self.full_df[self.userid_column_name] == userId]
+                newest_entry = user_df.index[user_df['timestamp']
+                                                == user_df['timestamp'].max()].tolist()
+                newest_row = newest_entry[-1]
+                test_indices.append(indices[newest_row])
+            self.test_df = self.full_df.loc[test_indices]
+            train_indices = list(set(indices).difference(test_indices))
+            self.train_df = self.full_df.loc[train_indices]
+        elif self.eval_method == 'fold':
+            self.test_df = pd.read_csv(self.test_file, sep=',')
+            self.train_df = pd.read_csv(self.train_file, sep=',')
 
     def count_dimensions(self):
         user_offset_dict = {}
@@ -131,7 +138,9 @@ class LoadMovieLens():
                 offset += 1
 
         self.user_offset_dict = user_offset_dict
+        self.user_offset_to_id_dict = dict((v,k) for k,v in user_offset_dict.items())
         self.item_offset_dict = item_offset_dict
+        self.item_offset_to_id_dict = dict((v,k) for k,v in item_offset_dict.items())
         self.user_sideinfo_offset_dict = user_sideinfo_offset_dict
         self.item_sideinfo_offset_dict = item_sideinfo_offset_dict
         self.context_offset_dict = context_offset_dict
@@ -205,11 +214,11 @@ class LoadMovieLens():
                 set(unique_train_items).difference(value[0]))
 
         # TODO Fjern padding
-        longest_genre_list = len(item_sideinfo_dict[min(
-            item_sideinfo_dict, key=lambda x: len(item_sideinfo_dict[x]))])
-        for key, value in item_sideinfo_dict.items():
-            item_sideinfo_dict[key] = (
-                value + longest_genre_list * [0])[:longest_genre_list]
+        # longest_genre_list = len(item_sideinfo_dict[max(
+        #     item_sideinfo_dict, key=lambda x: len(item_sideinfo_dict[x]))])
+        # for key, value in item_sideinfo_dict.items():
+        #     item_sideinfo_dict[key] = (
+        #         value + longest_genre_list * [0])[:longest_genre_list]
 
         self.user_sideinfo_dict = user_sideinfo_dict
         self.item_sideinfo_dict = item_sideinfo_dict
@@ -246,7 +255,12 @@ class LoadMovieLens():
                     self.context_offset_dict[context + str(pos[index])])
             contexts.append(user_contexts)
             user_sideinfo.append(self.user_sideinfo_dict[userId])
-            item_sideinfo.append(self.item_sideinfo_dict[pos[0]])
+            
+            sideinfo = self.item_sideinfo_dict[pos[0]]
+            # if the item has more than one genre, choose a random one
+            if len(sideinfo) > 1:
+                sideinfo = [random.choice(sideinfo)]
+            item_sideinfo.append(sideinfo)
 
         return {'user_ids': user_ids, 'pos_interactions': pos_interactions, 'neg_interactions': neg_interactions,
                 'contexts': contexts, 'user_sideinfo': user_sideinfo, 'item_sideinfo': item_sideinfo}
@@ -285,11 +299,16 @@ class LoadMovieLens():
                 print(
                     f'user: {user_index}, item_index: {item_index}, item_offset: {item_offset}, user_offset: {user_offset}')
                 raise e
+            
+        #add 2 times identity matrix
+        for i in range(self.n_context):
+            offset = self.n_users + self.n_items
+            adj_mat[i + offset,i + offset] = 2
 
             #   U  I  C
             # U 0  R  uc
             # I Rt 0  ic
-            # C 0  0  0
+            # C 0  0  2I
 
         print("  - User sideinfo matrix")
         for userId in self.train_df[self.userid_column_name].unique():
@@ -313,10 +332,13 @@ class LoadMovieLens():
 
         print("  - Normalizing user sideinfo adj")
         norm_us_adj_mat = self.normalize_sideinfo(user_sideinfo_adj_mat)
+        
         print("  - Normalizing item sideinfo adj")
         norm_is_adj_mat = self.normalize_sideinfo(item_sideinfo_adj_mat)
+        
         print("  - Normalizing full adj")
-        norm_adj_mat = self._normalize_adj_matrix(adj_mat)
+        # norm_adj_mat = self._normalize_adj_matrix(adj_mat)
+        norm_adj_mat = self.symmetric_normalize(adj_mat)
 
         return adj_mat, user_sideinfo_adj_mat, item_sideinfo_adj_mat, norm_adj_mat, norm_us_adj_mat, norm_is_adj_mat
 
@@ -374,6 +396,22 @@ class LoadMovieLens():
                     matrix_copy[row, col] = 1.0/iu_counter[row]  # (2,1)
 
         return matrix_copy
+    
+    def symmetric_normalize(self, x):
+        mat_size = self.n_users + self.n_items + self.n_context
+        diagonal_mat = sparse.dok_matrix(
+            (mat_size, mat_size), dtype=np.float32)
+        for i in range(mat_size):
+            non_zero_count = x[i].count_nonzero()
+            diagonal_mat[i,i] = non_zero_count
+
+        frac_diagonal_mat = diagonal_mat.power(-0.5)
+        #sqrt(2)*D^-(1/2)*A
+        frac_mul_adj_mat = frac_diagonal_mat.dot(x)
+        result = m.sqrt(2)*frac_mul_adj_mat
+            
+        return result
+        
 
     def normalize_sideinfo(self, x):
         matrix_copy = sparse.dok_matrix(x.shape, dtype=np.float32)
@@ -394,3 +432,14 @@ class LoadMovieLens():
                 matrix_copy[row, col] = 1.0/counter[row]
 
         return matrix_copy
+
+    def get_test_context_combinations(self):
+        # get the unique context combinations in the test set
+        combinations = set()
+        
+        for _, row in self.test_df.iterrows():
+            context_list = []
+            for context in self.context_list:
+                context_list.append(self.context_offset_dict[context + str(row[context])])
+            combinations.add(tuple(context_list))
+        return combinations
