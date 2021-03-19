@@ -49,18 +49,33 @@ class CSGCN():
             tf.get_collection(tf.GraphKeys.SUMMARIES, 'TRAIN_LOSS'))
 
         with tf.name_scope('TEST_ACC'):
-            self.test_hr_first = tf.placeholder(tf.float32)
-            tf.summary.scalar('test_hr_first', self.test_hr_first)
+            if args.eval_method == 'loo':
+                self.test_hr_first = tf.placeholder(tf.float32)
+                tf.summary.scalar('test_hr_first', self.test_hr_first)
+                self.test_mrr_first = tf.placeholder(tf.float32)
+                tf.summary.scalar('test_mrr_first', self.test_mrr_first)
+                self.test_hr_last = tf.placeholder(tf.float32)
+                tf.summary.scalar('test_hr_last', self.test_hr_last)
+                self.test_mrr_last = tf.placeholder(tf.float32)
+                tf.summary.scalar('test_mrr_last', self.test_mrr_last)
+            elif args.eval_method == 'fold':
+                self.test_precision_first = tf.placeholder(tf.float32)
+                tf.summary.scalar('test_precision_first', self.test_precision_first)
+                self.test_recall_first = tf.placeholder(tf.float32)
+                tf.summary.scalar('test_recall_first', self.test_recall_first)
+                self.test_f1_first = tf.placeholder(tf.float32)
+                tf.summary.scalar('test_f1_first', self.test_f1_first)
+                self.test_precision_last = tf.placeholder(tf.float32)
+                tf.summary.scalar('test_precision_last', self.test_precision_last)
+                self.test_recall_last = tf.placeholder(tf.float32)
+                tf.summary.scalar('test_recall_last', self.test_recall_last)
+                self.test_f1_last = tf.placeholder(tf.float32)
+                tf.summary.scalar('test_f1_last', self.test_f1_last)
+            
             self.test_ndcg_first = tf.placeholder(tf.float32)
             tf.summary.scalar('test_ndcg_first', self.test_ndcg_first)
-            self.test_mrr_first = tf.placeholder(tf.float32)
-            tf.summary.scalar('test_mrr_first', self.test_mrr_first)
-            self.test_hr_last = tf.placeholder(tf.float32)
-            tf.summary.scalar('test_hr_last', self.test_hr_last)
             self.test_ndcg_last = tf.placeholder(tf.float32)
             tf.summary.scalar('test_ndcg_last', self.test_ndcg_last)
-            self.test_mrr_last = tf.placeholder(tf.float32)
-            tf.summary.scalar('test_mrr_last', self.test_mrr_last)
         self.merged_test_acc = tf.summary.merge(
             tf.get_collection(tf.GraphKeys.SUMMARIES, 'TEST_ACC'))
 
@@ -314,17 +329,29 @@ class CSGCN():
             if epoch % 25 == 0:
                 print(f"The total loss in {epoch}th iteration is: {loss}")
             if epoch % args.eval_interval == 0:
-                ret = self.evaluate(epoch)
-                summary_test_acc = sess.run(self.merged_test_acc, feed_dict={self.test_hr_first: ret['hr'][0],
-                                                                             self.test_hr_last: ret['hr'][-1],
-                                                                             self.test_ndcg_first: ret['ndcg'][0],
-                                                                             self.test_ndcg_last: ret['ndcg'][-1],
-                                                                             self.test_mrr_first: ret['mrr'][0],
-                                                                             self.test_mrr_last: ret['mrr'][-1]
-                                                                             })
+                if args.eval_method == 'fold':
+                    ret = self.evaluate(epoch)
+                    summary_test_acc = sess.run(self.merged_test_acc, feed_dict={self.test_precision_first: ret['precision'][0],
+                                                                self.test_precision_last: ret['precision'][-1],
+                                                                self.test_recall_first: ret['recall'][0],
+                                                                self.test_recall_last: ret['recall'][-1],
+                                                                self.test_f1_first: ret['f1'][0],
+                                                                self.test_f1_last: ret['f1'][-1],
+                                                                self.test_ndcg_first: ret['ndcg'][0],
+                                                                self.test_ndcg_last: ret['ndcg'][-1]
+                                                                })
+                elif args.eval_method == 'loo':
+                    ret = self.evaluate_loo(epoch)
+                    summary_test_acc = sess.run(self.merged_test_acc, feed_dict={self.test_hr_first: ret['hr'][0],
+                                                                                self.test_hr_last: ret['hr'][-1],
+                                                                                self.test_ndcg_first: ret['ndcg'][0],
+                                                                                self.test_ndcg_last: ret['ndcg'][-1],
+                                                                                self.test_mrr_first: ret['mrr'][0],
+                                                                                self.test_mrr_last: ret['mrr'][-1]
+                                                                                })
                 train_writer.add_summary(summary_test_acc, epoch)
 
-    def evaluate(self, epoch):
+    def evaluate_loo(self, epoch):
         scores = dict()
 
         unique_item_ids = self.data.test_df[self.data.itemid_column_name].unique()
@@ -374,6 +401,62 @@ class CSGCN():
             ret['mrr'].append(mrr)
         return ret
 
+    def evaluate(self, epoch):
+        scores = dict()
+
+        for userId in self.data.test_df[self.data.userid_column_name].unique():
+            user_index = self.data.user_offset_dict[userId]
+            user_sideinfo = self.data.user_sideinfo_dict[userId]
+
+            user_indexes = []
+            user_sideinfos = []
+            item_indexes = []
+            item_sideinfos = []
+            contexts = []
+            for item in self.data.test_df[self.data.itemid_column_name].unique():
+                item_index = self.data.item_offset_dict[item]
+                item_sideinfo = self.data.item_sideinfo_dict[item]
+                
+                # if the item has more than one genre, choose a random one
+                if len(item_sideinfo) > 1:
+                    item_sideinfo = [random.choice(item_sideinfo)]
+                
+                for context_comb in self.data.context_test_combinations:
+                    
+                    user_indexes.append([user_index])
+                    user_sideinfos.append(user_sideinfo)
+                    item_indexes.append([item_index])
+                    item_sideinfos.append(item_sideinfo)
+                    contexts.append(list(context_comb))
+
+            feed_dict = {self.users: user_indexes, self.pos_interactions: item_indexes,
+                            self.context: contexts, self.user_sideinfo: user_sideinfos,
+                            self.item_sideinfo: item_sideinfos}
+            pos_scores = self.sess.run(self.pos_scores, feed_dict=feed_dict)
+            pos_scores = np.sum(pos_scores, axis=1)
+            item_ids = [self.data.item_offset_to_id_dict[x[0]] for x in item_indexes]
+            pos_scores = list(zip(item_ids, pos_scores))
+            
+            pos_scores_dict = dict()
+            for itemId, score in pos_scores:
+                if itemId not in pos_scores_dict:
+                    pos_scores_dict[itemId] = score
+                else:
+                    if score > pos_scores_dict[itemId]:
+                        pos_scores_dict[itemId] = score
+            pos_scores_tuple_list = [(k, v) for k, v in pos_scores_dict.items()] 
+            scores[userId] = pos_scores_tuple_list
+
+        ret = defaultdict(list)
+        for k in self.ks:
+            precision_value, recall_value, f1_value, ndcg_value = self.evaluator.evaluate(
+                scores, self.data.user_ground_truth_dict, k, epoch)
+            ret['precision'].append(precision_value)
+            ret['recall'].append(recall_value)
+            ret['f1'].append(f1_value)
+            ret['ndcg'].append(ndcg_value)
+        return ret
+
 
 if __name__ == '__main__':
     dataset = args.dataset
@@ -383,7 +466,7 @@ if __name__ == '__main__':
         file_data = open(path, 'rb')
         data = pickle.load(file_data)
     else:
-        data = LoadMovieLens(random_seed=args.seed, dataset=dataset)
+        data = LoadMovieLens(random_seed=args.seed, dataset=dataset, eval_method=args.eval_method)
         path = 'checkpoints/' + dataset + '.chk'
         file_data = open(path, 'wb')
         pickle.dump(data, file_data)
