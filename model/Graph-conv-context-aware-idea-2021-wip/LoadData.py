@@ -35,6 +35,13 @@ class LoadMovieLens():
             self.userid_column_name = 'userId'
             self.itemid_column_name = 'movieId'
             self.path = 'Data/ml1m/'
+        elif dataset== 'frappe':
+            self.context_list ['weekday', 'timeofday', 'isweekend', 'weather']
+            self.item_sideinfo_columns = ['cost']
+            self.user_sideinfo_columns ['city']
+            self.userid_column_name = 'userId'
+            self.itemid_column_name = 'itemId'
+            self.path = 'Data/Frappe/'
 
         self.eval_method = eval_method
         self.train_file = self.path + "train.txt"
