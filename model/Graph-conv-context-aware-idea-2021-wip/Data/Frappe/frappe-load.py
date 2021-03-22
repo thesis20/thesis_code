@@ -1,10 +1,8 @@
 import pandas as pd
-#from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split
 
 ratings = pd.read_csv('frappe.csv', sep='\t', names=['userId', 'itemId', 'count', 'daytime', 'weekday', 'isweekend', 'homework', 'cost', 'weather', 'country', 'city'])
 meta = pd.read_csv('meta.csv', sep='\t', names=['itemId', 'package', 'category', 'downloads', 'developer', 'icon', 'language', 'description', 'name', 'price', 'rating', 'short desc'])
-
-print("lo")
 
 def convert_daytime_to_timeofday(daytime):
     if daytime == 'sunrise':
