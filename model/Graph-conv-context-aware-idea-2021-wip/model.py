@@ -119,23 +119,11 @@ class CSGCN():
         all_weights['item_sideinfo_embedding'] = tf.Variable(self.initializer([self.data.n_item_sideinfo, self.emb_dim]),
                                                              name='item_sideinfo_embedding')
 
-        # Biases
+        # Biases for BPR loss
         all_weights['user_bias'] = tf.Variable(
             tf.zeros([self.data.n_users], dtype=tf.float32, name='user_bias'))
         all_weights['item_bias'] = tf.Variable(
             tf.zeros([self.data.n_items], dtype=tf.float32, name='item_bias'))
-
-        self.weight_size_list = [self.emb_dim] + self.weight_size
-        for k in range(self.n_layers):
-            all_weights['W_gc_%d' % k] = tf.Variable(
-                self.initializer([self.weight_size_list[k], self.weight_size_list[k+1]]), name='W_gc_%d' % k)
-            all_weights['b_gc_%d' % k] = tf.Variable(
-                self.initializer([1, self.weight_size_list[k+1]]), name='b_gc_%d' % k)
-
-            all_weights['W_bi_%d' % k] = tf.Variable(
-                self.initializer([self.weight_size_list[k], self.weight_size_list[k + 1]]), name='W_bi_%d' % k)
-            all_weights['b_bi_%d' % k] = tf.Variable(
-                self.initializer([1, self.weight_size_list[k + 1]]), name='b_bi_%d' % k)
 
         return all_weights
 
@@ -229,17 +217,10 @@ class CSGCN():
         for k in range(0, self.n_layers):
             side_embeddings = tf.sparse_tensor_dense_matmul(uic_adj_mat, embs)
             embs = side_embeddings
-            sum_embeddings = tf.nn.leaky_relu(tf.matmul(
-                side_embeddings, self.weights['W_gc_%d' % k]) + self.weights['b_gc_%d' % k])
-
-            bi_embeddings = tf.multiply(embs, side_embeddings)
-            bi_embeddings = tf.nn.leaky_relu(tf.matmul(
-                bi_embeddings, self.weights['W_bi_%d' % k]) + self.weights['b_bi_%d' % k])
-            ego_embeddings = sum_embeddings + bi_embeddings
 
             # Message dropout
-            ego_embeddings = tf.nn.dropout(ego_embeddings, 1 - self.mess_dropout[k])
-            norm_embeddings = tf.nn.l2_normalize(ego_embeddings, axis=1)
+            ego_embeddings = tf.nn.dropout(embs, self.mess_dropout[k])
+            norm_embeddings = tf.nn.l2_normalize(embs, axis=1)
             all_embeddings += [norm_embeddings]
 
         all_embeddings = tf.stack(all_embeddings, 1)
