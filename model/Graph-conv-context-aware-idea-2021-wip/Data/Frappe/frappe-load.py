@@ -1,5 +1,5 @@
 import pandas as pd
-from sklearn.model_selection import train_test_split
+#from sklearn.model_selection import train_test_split
 
 ratings = pd.read_csv('frappe.csv', sep='\t', names=['userId', 'itemId', 'count', 'daytime', 'weekday', 'isweekend', 'homework', 'cost', 'weather', 'country', 'city'])
 meta = pd.read_csv('meta.csv', sep='\t', names=['itemId', 'package', 'category', 'downloads', 'developer', 'icon', 'language', 'description', 'name', 'price', 'rating', 'short desc'])
@@ -23,19 +23,19 @@ def convert_daytime_to_timeofday(daytime):
         return 6
 
 def convert_weekday_to_int(weekday):
-    if weekday == 'sunrise':
+    if weekday == 'monday':
         return 0
-    if weekday == 'morning':
+    if weekday == 'tuesday':
         return 1
-    if weekday == 'noon':
+    if weekday == 'wednesday':
         return 2
-    if weekday == 'afternoon':
+    if weekday == 'thursday':
         return 3
-    if weekday == 'evening':
+    if weekday == 'friday':
         return 4
-    if weekday == 'sunset':
+    if weekday == 'saturday':
         return 5
-    if weekday == 'night':
+    if weekday == 'sunday':
         return 6
 
 def convert_isweekend_to_bool(isweekend):
@@ -81,7 +81,6 @@ joined = ratings.merge(meta)
 joined.drop('count', inplace=True, axis=1)
 joined.drop('homework', inplace=True, axis=1)
 joined.drop('country', inplace=True, axis=1)
-joined.drop('city', inplace=True, axis=1)
 joined.drop('package', inplace=True, axis=1)
 joined.drop('category', inplace=True, axis=1)
 joined.drop('downloads', inplace=True, axis=1)
