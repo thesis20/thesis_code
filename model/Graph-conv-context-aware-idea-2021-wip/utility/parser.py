@@ -2,14 +2,14 @@ import argparse
 
 def parse_args():
     parser = argparse.ArgumentParser(description="CSGCN.")
-    parser.add_argument('--load', type=int, default=1,
+    parser.add_argument('--load', type=int, default=0,
                         help='1 = Load saved data. 0 = Save new data.')
     parser.add_argument('--seed', type=int, default=2021,
                         help='Seed for randoms.')
     parser.add_argument('--embed_size', type=int, default=64,
                         help='Embedding size.')
-    parser.add_argument('--dataset', nargs='?', default='ml100k',
-                        help='Choose a dataset from {ml100k, ml1m}')
+    parser.add_argument('--dataset', nargs='?', default='frappe',
+                        help='Choose a dataset from {ml100k, ml1m, frappe}')
     parser.add_argument('--epoch', type=int, default=1000,
                         help='Number of epochs.')
     parser.add_argument('--weight_size', nargs='?', default='[64, 64, 64, 64]',

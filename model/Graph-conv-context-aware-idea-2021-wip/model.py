@@ -2,7 +2,7 @@ import os
 import numpy as np
 import tensorflow as tf
 from evaluation import evaluator
-from LoadData import LoadMovieLens
+from LoadData import LoadDataset
 from tensorflow.python.client import device_lib
 import pickle
 from utility.parser import parse_args
@@ -309,7 +309,7 @@ class CSGCN():
 
             if epoch % 25 == 0:
                 print(f"The total loss in {epoch}th iteration is: {loss}")
-            if epoch % args.eval_interval == 0:
+            if epoch > 0 and epoch % args.eval_interval == 0:
                 if args.eval_method == 'fold':
                     ret = self.evaluate(epoch)
                     summary_test_acc = sess.run(self.merged_test_acc, feed_dict={self.test_precision_first: ret['precision'][0],
@@ -447,7 +447,7 @@ if __name__ == '__main__':
         file_data = open(path, 'rb')
         data = pickle.load(file_data)
     else:
-        data = LoadMovieLens(random_seed=args.seed, dataset=dataset, eval_method=args.eval_method)
+        data = LoadDataset(random_seed=args.seed, dataset=dataset, eval_method=args.eval_method)
         path = 'checkpoints/' + dataset + '.chk'
         file_data = open(path, 'wb')
         pickle.dump(data, file_data)
