@@ -70,10 +70,6 @@ def convert_cost_to_int(cost):
     else:
         return 1
 
-    
-
-#convert_datetime_to_timeofday(ratings['weekday'].unique())
-print(ratings['cost'].unique())
 ratings['daytime'] = ratings['daytime'].apply(lambda x: convert_daytime_to_timeofday(x))
 ratings['weekday'] = ratings['weekday'].apply(lambda x: convert_weekday_to_int(x))
 ratings['isweekend'] = ratings['isweekend'].apply(lambda x: convert_isweekend_to_bool(x))
