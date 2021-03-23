@@ -143,14 +143,15 @@ class LoadDataset():
                 user_sideinfo_offset_dict[column + str(value)] = offset
                 offset += 1
 
-        genre_offset = 0
+        offset = 0
         if 'genre' in self.item_sideinfo_columns:
             for column in self.genrelist:
-                item_sideinfo_offset_dict[column + str(1)] = genre_offset
-                genre_offset += 1
+                item_sideinfo_offset_dict[column + str(1)] = offset
+                offset += 1
 
-        offset = 0
         for column in self.item_sideinfo_columns:
+            if column == 'genre':
+                continue
             for value in self.full_df[column].unique():
                 item_sideinfo_offset_dict[column + str(value)] = offset
                 offset += 1
@@ -307,7 +308,7 @@ class LoadDataset():
             
             sideinfo = self.item_sideinfo_dict[pos[0]]
             # TODO if the item has more than one genre, choose a random one
-            if 'genre' in self.user_sideinfo_columns:
+            if 'genre' in self.item_sideinfo_columns:
                 if len(sideinfo) > 1:
                     sideinfo = [random.choice(sideinfo)]
             item_sideinfo.append(sideinfo)

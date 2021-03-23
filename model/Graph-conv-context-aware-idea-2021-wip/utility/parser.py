@@ -8,7 +8,7 @@ def parse_args():
                         help='Seed for randoms.')
     parser.add_argument('--embed_size', type=int, default=64,
                         help='Embedding size.')
-    parser.add_argument('--dataset', nargs='?', default='frappe',
+    parser.add_argument('--dataset', nargs='?', default='ml100k',
                         help='Choose a dataset from {ml100k, ml1m, frappe}')
     parser.add_argument('--epoch', type=int, default=1000,
                         help='Number of epochs.')

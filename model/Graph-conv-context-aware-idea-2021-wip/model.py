@@ -397,13 +397,13 @@ class CSGCN():
             for item in self.data.test_df[self.data.itemid_column_name].unique():
                 item_index = self.data.item_offset_dict[item]
                 item_sideinfo = self.data.item_sideinfo_dict[item]
-                
-                # if the item has more than one genre, choose a random one
-                if len(item_sideinfo) > 1:
-                    item_sideinfo = [random.choice(item_sideinfo)]
-                
+
+                # TODO Fix this
+                if 'genre' in self.data.item_sideinfo_columns:
+                    if len(item_sideinfo) > 1:
+                        item_sideinfo = [random.choice(item_sideinfo)]
+
                 for context_comb in self.data.context_test_combinations:
-                    
                     user_indexes.append([user_index])
                     user_sideinfos.append(user_sideinfo)
                     item_indexes.append([item_index])
@@ -417,7 +417,7 @@ class CSGCN():
             pos_scores = np.sum(pos_scores, axis=1)
             item_ids = [self.data.item_offset_to_id_dict[x[0]] for x in item_indexes]
             pos_scores = list(zip(item_ids, pos_scores))
-            
+
             pos_scores_dict = dict()
             for itemId, score in pos_scores:
                 if itemId not in pos_scores_dict:
