@@ -15,9 +15,54 @@ class Data(object):
     def __init__(self, path, batch_size):
         self.path = path
         self.batch_size = batch_size
+        self.loo_eval = True
 
-        train_file = path + '/train.txt'
-        test_file = path + '/test.txt'
+        if self.loo_eval:
+            self.init_loo_split()
+        else:
+            self.init_train_test_split()
+
+
+    def init_loo_split(self):
+        full_file = self.path + '/full.txt'
+
+        self.n_users, self.n_items = 0, 0
+        self.n_train, self.n_test = 0, 0
+        self.neg_pools = {}
+
+        self.exist_users_train = []
+        self.exist_users_test = []
+
+        self.full_df = pd.read_csv(full_file)
+        reverse_full_df = self.full_df[::-1]
+        self.train_df = self.full_df
+
+        # TODO: Refactor så movieId er itemID?
+        self.n_items = self.full_df['movieId'].nunique()
+        self.n_users = self.full_df['userId'].nunique()
+        self.unique_users = self.full_df['userId'].unique()
+        loo_interactions = []
+        #count = 0
+        for userid in self.unique_users:
+            #if count == 20:
+               # break
+            for index, row in reverse_full_df.iterrows():
+                if row['userId'] == userid:
+                    loo_interactions.append(row)
+                    self.train_df.drop(index, inplace=True)
+                    break
+
+        self.test_df = pd.DataFrame(loo_interactions)
+        print("test")
+        print(self.test_df.shape)
+        print("train")
+        print(self.train_df.shape)
+        self.create_positive_interactions()
+        
+    
+    def init_train_test_split(self):
+        train_file = self.path + '/train.txt'
+        test_file = self.path + '/test.txt'
 
         self.n_users, self.n_items = 0, 0
         self.n_train, self.n_test = 0, 0
@@ -31,20 +76,25 @@ class Data(object):
         # self.n_train = antal interactions i train data
         # self.exist_users er liste med user ids
         # self.n_test = antal interactions in test data
-        train_df = pd.read_csv(train_file)
-        test_df = pd.read_csv(test_file)
-        full_df = train_df.append(test_df)
+        self.train_df = pd.read_csv(train_file)
+        self.test_df = pd.read_csv(test_file)
+        self.full_df = self.train_df.append(self.test_df)
         
         # TODO: Refactor så movieId er itemID?
-        self.n_items = full_df['movieId'].nunique()
-        self.n_users = full_df['userId'].nunique()
+        self.n_items = self.full_df['movieId'].nunique()
+        self.n_users = self.full_df['userId'].nunique()
+
+        self.create_positive_interactions()
+        
+
+    def create_positive_interactions(self):
         # dictionaries mapping item and user id from full dataset to an index
-        self.item_id_to_index = {k: v for v, k in enumerate(full_df['movieId'].unique())}
-        self.user_id_to_index = {k: v for v, k in enumerate(full_df['userId'].unique())}
-        self.exist_users_train = train_df['userId'].unique()
-        self.exist_users_test = test_df['userId'].unique()
-        self.n_train = len(train_df.index)
-        self.n_test = len(test_df.index)
+        self.item_id_to_index = {k: v for v, k in enumerate(self.full_df['movieId'].unique())}
+        self.user_id_to_index = {k: v for v, k in enumerate(self.full_df['userId'].unique())}
+        self.exist_users_train = self.train_df['userId'].unique()
+        self.exist_users_test = self.test_df['userId'].unique()
+        self.n_train = len(self.train_df.index)
+        self.n_test = len(self.test_df.index)
         
         # TODO: Skal her tælles en op?
         self.n_items += 1
@@ -56,7 +106,7 @@ class Data(object):
         # Key: userID || value: list of positive interactions
         # self.R: [uid, i] = 1 for hver interaction
         
-        for _, row in train_df.iterrows():
+        for _, row in self.train_df.iterrows():
             userId = row['userId']
             movieId = row['movieId']
             self.R[
@@ -68,7 +118,7 @@ class Data(object):
             else:
                 self.train_items[userId].append(movieId)
                 
-        for _, row in test_df.iterrows():
+        for _, row in self.test_df.iterrows():
             userId = row['userId']
             movieId = row['movieId']
             if userId not in self.test_set:

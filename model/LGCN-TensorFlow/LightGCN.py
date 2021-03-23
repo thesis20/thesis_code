@@ -23,6 +23,7 @@ class LightGCN(object):
     def __init__(self, data_config, pretrain_data):
         # argument settings
         self.model_type = 'LightGCN'
+        self.model_data = data_generator
         self.adj_type = args.adj_type
         self.alg_type = args.alg_type
         self.pretrain_data = pretrain_data
@@ -74,6 +75,10 @@ class LightGCN(object):
             self.train_rec_last = tf.placeholder(tf.float32)
             #record for top(Ks[-1])
             tf.summary.scalar('train_rec_last', self.train_rec_last)
+            self.train_hit_first = tf.placeholder(tf.float32)
+            tf.summary.scalar('train_hit_first', self.train_hit_first)
+            self.train_hit_last = tf.placeholder(tf.float32)
+            tf.summary.scalar('train_hit_last', self.train_hit_last)
             self.train_ndcg_first = tf.placeholder(tf.float32)
             tf.summary.scalar('train_ndcg_first', self.train_ndcg_first)
             self.train_ndcg_last = tf.placeholder(tf.float32)
@@ -94,8 +99,12 @@ class LightGCN(object):
         with tf.name_scope('TEST_ACC'):
             self.test_rec_first = tf.placeholder(tf.float32)
             tf.summary.scalar('test_rec_first', self.test_rec_first)
+            self.test_hit_first = tf.placeholder(tf.float32)
+            tf.summary.scalar('test_hit_first', self.test_hit_first)
             self.test_rec_last = tf.placeholder(tf.float32)
             tf.summary.scalar('test_rec_last', self.test_rec_last)
+            self.test_hit_last = tf.placeholder(tf.float32)
+            tf.summary.scalar('test_hit_last', self.test_hit_last)
             self.test_ndcg_first = tf.placeholder(tf.float32)
             tf.summary.scalar('test_ndcg_first', self.test_ndcg_first)
             self.test_ndcg_last = tf.placeholder(tf.float32)
@@ -380,6 +389,110 @@ def load_pretrained_data():
         pretrain_data = None
     return pretrain_data
 
+def test_pretrained_model():
+    if model.model_data.loo_eval:
+        sess.run(tf.global_variables_initializer())
+        saver.restore(sess, ckpt.model_checkpoint_path)
+        print('load the pretrained model parameters from: ', pretrain_path)
+
+        # *********************************************************
+        # get the performance from pretrained model.
+        if args.report != 1:
+            users_to_test = list(data_generator.test_set.keys())
+            ret = test(sess, model, users_to_test, drop_flag=True)
+            cur_best_pre_0 = ret['hit'][0]
+                    
+            pretrain_ret = 'pretrained model hit rate=[%s], ndcg=[%s], '\
+                            'mrr=[%s]' % \
+                            (', '.join(['%.5f' % r for r in ret['hit']]),
+                            ', '.join(['%.5f' % r for r in ret['ndcg']]),
+                            ', '.join(['%.5f' % r for r in ret['mrr']]))
+            print(pretrain_ret)
+    else:
+        sess.run(tf.global_variables_initializer())
+        saver.restore(sess, ckpt.model_checkpoint_path)
+        print('load the pretrained model parameters from: ', pretrain_path)
+
+        # *********************************************************
+        # get the performance from pretrained model.
+        if args.report != 1:
+            users_to_test = list(data_generator.test_set.keys())
+            ret = test(sess, model, users_to_test, drop_flag=True)
+            cur_best_pre_0 = ret['recall'][0]
+                    
+            pretrain_ret = 'pretrained model recall=[%s], precision=[%s], '\
+                            'ndcg=[%s]' % \
+                            (', '.join(['%.5f' % r for r in ret['recall']]),
+                            ', '.join(['%.5f' % r for r in ret['precision']]),
+                            ', '.join(['%.5f' % r for r in ret['ndcg']]))
+            print(pretrain_ret)
+
+def test_performance(sess, model, users_to_test, drop_flag):
+    if model.model_data.loo_eval:
+        ret = test_loo(sess, model, users_to_test, drop_flag)
+        final_perf = "hit rate=[%s], ndcg=[%s], mrr=[%s]" % \
+            (', '.join(['%.5f' % r for r in ret['hit']]),
+            ', '.join(['%.5f' % r for r in ret['ndcg']]),
+            ', '.join(['%.5f' % r for r in ret['mrr']]))
+    else:
+        ret = test(sess, model, users_to_test, drop_flag)
+
+        final_perf = "recall=[%s], precision=[%s], ndcg=[%s]" % \
+            (', '.join(['%.5f' % r for r in ret['recall']]),
+            ', '.join(['%.5f' % r for r in ret['precision']]),
+            ', '.join(['%.5f' % r for r in ret['ndcg']]))
+
+    return final_perf
+
+def train_testing(sess, model, users_to_test, drop_flag, train_set_flag):
+    if model.model_data.loo_eval:
+        ret = test_loo(sess, model, users_to_test ,drop_flag, train_set_flag)
+        perf_str = 'Epoch %d: train==[%.5f=%.5f + %.5f + %.5f], hit rate=[%s], ndcg=[%s], mrr=[%s]' % \
+                (epoch, loss, mf_loss, emb_loss, reg_loss, 
+                    ', '.join(['%.5f' % r for r in ret['hit']]),
+                    ', '.join(['%.5f' % r for r in ret['ndcg']]),
+                    ', '.join(['%.5f' % r for r in ret['mrr']]))
+        print(perf_str)
+        summary_train_acc = sess.run(model.merged_train_acc, feed_dict={model.train_hit_first: ret['hit'][0],
+                                                                        model.train_hit_last: ret['hit'][-1],
+                                                                        model.train_rec_first: 0,
+                                                                        model.train_rec_last: 0,
+                                                                        model.train_ndcg_first: ret['ndcg'][0],
+                                                                        model.train_ndcg_last: ret['ndcg'][-1]})
+    else:
+        ret = test(sess, model, users_to_test ,drop_flag, train_set_flag)
+        perf_str = 'Epoch %d: train==[%.5f=%.5f + %.5f + %.5f], recall=[%s], precision=[%s], ndcg=[%s]' % \
+                (epoch, loss, mf_loss, emb_loss, reg_loss, 
+                    ', '.join(['%.5f' % r for r in ret['recall']]),
+                    ', '.join(['%.5f' % r for r in ret['precision']]),
+                    ', '.join(['%.5f' % r for r in ret['ndcg']]))
+        print(perf_str)
+        summary_train_acc = sess.run(model.merged_train_acc, feed_dict={model.train_rec_first: ret['recall'][0],
+                                                                        model.train_rec_last: ret['recall'][-1],
+                                                                        model.train_hit_first: 0,
+                                                                        model.train_hit_last: 0,
+                                                                        model.train_ndcg_first: ret['ndcg'][0],
+                                                                        model.train_ndcg_last: ret['ndcg'][-1]})
+    
+    return ret, summary_train_acc
+
+def test_testing(sess, model, users_to_test, drop_flag):
+    if model.model_data.loo_eval:
+        ret = test_loo(sess, model, users_to_test, drop_flag)
+        summary_test_acc = sess.run(model.merged_test_acc,
+                                feed_dict={model.test_hit_first: ret['hit'][0], model.test_hit_last: ret['hit'][-1],
+                                            model.test_rec_first: 0,
+                                            model.test_rec_last: 0,
+                                            model.test_ndcg_first: ret['ndcg'][0], model.test_ndcg_last: ret['ndcg'][-1]})
+    else:
+        ret = test(sess, model, users_to_test, drop_flag)
+        summary_test_acc = sess.run(model.merged_test_acc,
+                                    feed_dict={model.test_rec_first: ret['recall'][0], model.test_rec_last: ret['recall'][-1],
+                                                model.test_hit_first: 0,
+                                                model.test_hit_last: 0,
+                                                model.test_ndcg_first: ret['ndcg'][0], model.test_ndcg_last: ret['ndcg'][-1]})
+    return ret, summary_test_acc
+
 # parallelized sampling on CPU 
 class sample_thread(threading.Thread):
     def __init__(self):
@@ -491,23 +604,7 @@ if __name__ == '__main__':
 
         ckpt = tf.train.get_checkpoint_state(os.path.dirname(pretrain_path + '/checkpoint'))
         if ckpt and ckpt.model_checkpoint_path:
-            sess.run(tf.global_variables_initializer())
-            saver.restore(sess, ckpt.model_checkpoint_path)
-            print('load the pretrained model parameters from: ', pretrain_path)
-
-            # *********************************************************
-            # get the performance from pretrained model.
-            if args.report != 1:
-                users_to_test = list(data_generator.test_set.keys())
-                ret = test(sess, model, users_to_test, drop_flag=True)
-                cur_best_pre_0 = ret['recall'][0]
-                
-                pretrain_ret = 'pretrained model recall=[%s], precision=[%s], '\
-                               'ndcg=[%s]' % \
-                               (', '.join(['%.5f' % r for r in ret['recall']]),
-                                ', '.join(['%.5f' % r for r in ret['precision']]),
-                                ', '.join(['%.5f' % r for r in ret['ndcg']]))
-                print(pretrain_ret)
+            test_pretrained_model()          
         else:
             sess.run(tf.global_variables_initializer())
             cur_best_pre_0 = 0.
@@ -536,13 +633,8 @@ if __name__ == '__main__':
             % (args.embed_size, args.lr, args.layer_size, args.keep_prob, args.regs, args.loss_type, args.adj_type))
 
         for i, users_to_test in enumerate(users_to_test_list):
-            ret = test(sess, model, users_to_test, drop_flag=True)
-
-            final_perf = "recall=[%s], precision=[%s], ndcg=[%s]" % \
-                         (', '.join(['%.5f' % r for r in ret['recall']]),
-                          ', '.join(['%.5f' % r for r in ret['precision']]),
-                          ', '.join(['%.5f' % r for r in ret['ndcg']]))
-
+            final_perf = test_performance(sess, model, users_to_test, drop_flag=True)
+            
             f.write('\t%s\n\t%s\n' % (split_state[i], final_perf))
         f.close()
         exit()
@@ -563,7 +655,7 @@ if __name__ == '__main__':
     train_writer = tf.summary.FileWriter(tensorboard_model_path +model.log_dir+ '/run_' + str(run_time), sess.graph)
     
     
-    loss_loger, pre_loger, rec_loger, ndcg_loger, hit_loger = [], [], [], [], []
+    loss_loger, pre_loger, rec_loger, ndcg_loger, hit_loger, mrr_loger = [], [], [], [], [], []
     stopping_step = 0
     should_stop = False
     
@@ -613,19 +705,8 @@ if __name__ == '__main__':
                 print(perf_str)
             continue
         users_to_test = list(data_generator.train_items.keys())
-        ret = test(sess, model, users_to_test ,drop_flag=True,train_set_flag=1)
-        perf_str = 'Epoch %d: train==[%.5f=%.5f + %.5f + %.5f], recall=[%s], precision=[%s], ndcg=[%s]' % \
-                   (epoch, loss, mf_loss, emb_loss, reg_loss, 
-                    ', '.join(['%.5f' % r for r in ret['recall']]),
-                    ', '.join(['%.5f' % r for r in ret['precision']]),
-                    ', '.join(['%.5f' % r for r in ret['ndcg']]))
-        print(perf_str)
-        summary_train_acc = sess.run(model.merged_train_acc, feed_dict={model.train_rec_first: ret['recall'][0],
-                                                                        model.train_rec_last: ret['recall'][-1],
-                                                                        model.train_ndcg_first: ret['ndcg'][0],
-                                                                        model.train_ndcg_last: ret['ndcg'][-1]})
+        ret, summary_train_acc = train_testing(sess, model, users_to_test, drop_flag=True, train_set_flag=1)
         train_writer.add_summary(summary_train_acc, epoch // 20)
-        
         '''
         *********************************************************
         parallelized sampling
@@ -657,31 +738,44 @@ if __name__ == '__main__':
         train_writer.add_summary(summary_test_loss, epoch // 20)
         t2 = time()
         users_to_test = list(data_generator.test_set.keys())
-        ret = test(sess, model, users_to_test, drop_flag=True)
-        summary_test_acc = sess.run(model.merged_test_acc,
-                                    feed_dict={model.test_rec_first: ret['recall'][0], model.test_rec_last: ret['recall'][-1],
-                                               model.test_ndcg_first: ret['ndcg'][0], model.test_ndcg_last: ret['ndcg'][-1]})
+        ret, summary_test_acc = test_testing(sess, model, users_to_test, drop_flag=True)
+        
         train_writer.add_summary(summary_test_acc, epoch // 20)
                                                                                                  
                                                                                                  
         t3 = time()
-        
         loss_loger.append(loss)
-        rec_loger.append(ret['recall'])
-        pre_loger.append(ret['precision'])
-        ndcg_loger.append(ret['ndcg'])
-
-        if args.verbose > 0:
-            perf_str = 'Epoch %d [%.1fs + %.1fs]: test==[%.5f=%.5f + %.5f + %.5f], recall=[%s], ' \
-                       'precision=[%s], ndcg=[%s]' % \
-                       (epoch, t2 - t1, t3 - t2, loss_test, mf_loss_test, emb_loss_test, reg_loss_test, 
-                        ', '.join(['%.5f' % r for r in ret['recall']]),
-                        ', '.join(['%.5f' % r for r in ret['precision']]),
-                        ', '.join(['%.5f' % r for r in ret['ndcg']]))
+        
+        if model.model_data.loo_eval:
+            hit_loger.append(ret['hit'])
+            ndcg_loger.append(ret['ndcg'])
+            mrr_loger.append(ret['mrr'])
+            if args.verbose > 0:
+                perf_str = 'Epoch %d [%.1fs + %.1fs]: test==[%.5f=%.5f + %.5f + %.5f], hit rate=[%s], ' \
+                        'ndcg=[%s], mrr=[%s]' % \
+                        (epoch, t2 - t1, t3 - t2, loss_test, mf_loss_test, emb_loss_test, reg_loss_test, 
+                            ', '.join(['%.5f' % r for r in ret['hit']]),
+                            ', '.join(['%.5f' % r for r in ret['ndcg']]),
+                            ', '.join(['%.5f' % r for r in ret['mrr']]))
             print(perf_str)
-            
-        cur_best_pre_0, stopping_step, should_stop = early_stopping(ret['recall'][0], cur_best_pre_0,
-                                                                    stopping_step, expected_order='acc', flag_step=5)
+                
+            cur_best_pre_0, stopping_step, should_stop = early_stopping(ret['hit'][0], cur_best_pre_0,
+                                                                        stopping_step, expected_order='acc', flag_step=5)
+        else:
+            rec_loger.append(ret['recall'])
+            pre_loger.append(ret['precision'])
+            ndcg_loger.append(ret['ndcg'])
+            if args.verbose > 0:
+                perf_str = 'Epoch %d [%.1fs + %.1fs]: test==[%.5f=%.5f + %.5f + %.5f], recall=[%s], ' \
+                        'precision=[%s], ndcg=[%s]' % \
+                        (epoch, t2 - t1, t3 - t2, loss_test, mf_loss_test, emb_loss_test, reg_loss_test, 
+                            ', '.join(['%.5f' % r for r in ret['recall']]),
+                            ', '.join(['%.5f' % r for r in ret['precision']]),
+                            ', '.join(['%.5f' % r for r in ret['ndcg']]))
+                print(perf_str)
+                
+            cur_best_pre_0, stopping_step, should_stop = early_stopping(ret['recall'][0], cur_best_pre_0,
+                                                                        stopping_step, expected_order='acc', flag_step=5)
 
         # *********************************************************
         # early stopping when cur_best_pre_0 is decreasing for ten successive steps.
@@ -690,20 +784,33 @@ if __name__ == '__main__':
 
         # *********************************************************
         # save the user & item embeddings for pretraining.
-        if ret['recall'][0] == cur_best_pre_0 and args.save_flag == 1:
-            save_saver.save(sess, weights_save_path + '/weights', global_step=epoch)
-            print('save the weights in path: ', weights_save_path)
+        if model.model_data.loo_eval:
+            if ret['hit'][0] == cur_best_pre_0 and args.save_flag == 1:
+                save_saver.save(sess, weights_save_path + '/weights', global_step=epoch)
+                print('save the weights in path: ', weights_save_path)
+        else:
+            if ret['recall'][0] == cur_best_pre_0 and args.save_flag == 1:
+                save_saver.save(sess, weights_save_path + '/weights', global_step=epoch)
+                print('save the weights in path: ', weights_save_path)
     recs = np.array(rec_loger)
     pres = np.array(pre_loger)
     ndcgs = np.array(ndcg_loger)
+    hits = np.array(hit_loger)
+    mrrs = np.array(mrr_loger)
 
     best_rec_0 = max(recs[:, 0])
     idx = list(recs[:, 0]).index(best_rec_0)
 
-    final_perf = "Best Iter=[%d]@[%.1f]\trecall=[%s], precision=[%s], ndcg=[%s]" % \
-                 (idx, time() - t0, '\t'.join(['%.5f' % r for r in recs[idx]]),
-                  '\t'.join(['%.5f' % r for r in pres[idx]]),
-                  '\t'.join(['%.5f' % r for r in ndcgs[idx]]))
+    if self.data.eval_loo:
+        final_perf = "Best Iter=[%d]@[%.1f]\thit rate=[%s], ndcg=[%s], ret=[%s]" % \
+                    (idx, time() - t0, '\t'.join(['%.5f' % r for r in hits[idx]]),
+                    '\t'.join(['%.5f' % r for r in ndcgs[idx]]),
+                    '\t'.join(['%.5f' % r for r in mrrs[idx]]))
+    else:
+        final_perf = "Best Iter=[%d]@[%.1f]\trecall=[%s], precision=[%s], ndcg=[%s]" % \
+                    (idx, time() - t0, '\t'.join(['%.5f' % r for r in recs[idx]]),
+                    '\t'.join(['%.5f' % r for r in pres[idx]]),
+                    '\t'.join(['%.5f' % r for r in ndcgs[idx]]))
     print(final_perf)
 
     save_path = '%soutput/%s/%s.result' % (args.proj_path, args.dataset, model.model_type)
@@ -715,3 +822,4 @@ if __name__ == '__main__':
         % (args.embed_size, args.lr, args.layer_size, args.node_dropout, args.mess_dropout, args.regs,
            args.adj_type, final_perf))
     f.close()
+
