@@ -10,7 +10,7 @@ from sklearn.preprocessing import normalize
 import math as m
 
 
-class LoadMovieLens():
+class LoadDataset():
     def __init__(self, random_seed, dataset='ml100k', eval_method='fold'):
 
         if dataset == 'ml100k':
@@ -19,6 +19,7 @@ class LoadMovieLens():
                               'drama', 'fantasy',  'film-noir', 'horror',
                               'musical', 'mystery', 'romance', 'scifi',
                               'thriller', 'war', 'western']
+            self.item_sideinfo_columns = ['genre']
             self.user_sideinfo_columns = [
                 'age', 'gender', 'occupation', 'zipcode']
             self.context_list = ['weekday', 'timeofday']
@@ -29,12 +30,24 @@ class LoadMovieLens():
             self.genrelist = ['Action', 'Adventure', 'Animation', 'Children\'s',
                               'Comedy', 'Crime', 'Documentary', 'Drama', 'Fantasy', 'Film-Noir',
                               'Horror', 'Musical', 'Mystery', 'Romance', 'Sci-Fi', 'Thriller', 'War', 'Western']
+            self.item_sideinfo_columns = ['genre']
             self.user_sideinfo_columns = [
                 'age', 'gender', 'occupation', 'zipcode']
             self.context_list = ['weekday', 'timeofday']
             self.userid_column_name = 'userId'
             self.itemid_column_name = 'movieId'
             self.path = 'Data/ml1m/'
+        elif dataset == 'frappe':
+            self.genrelist = []
+            self.context_list = ['weekday', 'timeofday', 'isweekend', 'weather']
+            self.item_sideinfo_columns = ['cost']
+            self.user_sideinfo_columns = ['city']
+            self.userid_column_name = 'user'
+            self.itemid_column_name = 'item'
+            self.path = 'Data/Frappe/'
+        else:
+            print("No dataset defined")
+            exit()
 
         self.eval_method = eval_method
         self.train_file = self.path + "train.txt"
@@ -78,7 +91,11 @@ class LoadMovieLens():
         n_user_sideinfo = 0
         for column_name in self.user_sideinfo_columns:
             n_user_sideinfo += self.full_df[column_name].nunique()
-        n_item_sideinfo = len(self.genrelist)
+        if 'genre' in self.item_sideinfo_columns:
+            n_item_sideinfo = len(self.genrelist) + len(self.item_sideinfo_columns) - 1
+        else:
+            # TODO: Hardcoded 1 fordi at der kan være 2 værdier pr sideinfo
+            n_item_sideinfo = len(self.item_sideinfo_columns) + 1
         return n_user_sideinfo, n_item_sideinfo
 
     def context_counter(self):
@@ -126,10 +143,19 @@ class LoadMovieLens():
                 user_sideinfo_offset_dict[column + str(value)] = offset
                 offset += 1
 
-        genre_offset = 0
-        for column in self.genrelist:
-            item_sideinfo_offset_dict[column + str(1)] = genre_offset
-            genre_offset += 1
+        offset = 0
+        if 'genre' in self.item_sideinfo_columns:
+            for column in self.genrelist:
+                item_sideinfo_offset_dict[column + str(1)] = offset
+                offset += 1
+
+        for column in self.item_sideinfo_columns:
+            if column == 'genre':
+                continue
+            for value in self.full_df[column].unique():
+                item_sideinfo_offset_dict[column + str(value)] = offset
+                offset += 1
+
 
         offset = 0
         for column in self.context_list:
@@ -173,19 +199,33 @@ class LoadMovieLens():
             if row[self.itemid_column_name] not in item_sideinfo_dict:
                 # If movie has not been observed yet, save sideinfo
                 item_sideinfo_indexes = []
-                for column in self.genrelist:
-                    if row[column] == 1:
-                        item_sideinfo_indexes.append(
-                            self.item_sideinfo_offset_dict[column + str(1)])
-                item_sideinfo_dict[row[self.itemid_column_name]
-                                   ] = item_sideinfo_indexes
+
+                if 'genre' in self.item_sideinfo_columns:
+                    for column in self.genrelist:
+                        if row[column] == 1:
+                            item_sideinfo_indexes.append(
+                                self.item_sideinfo_offset_dict[column + str(1)])
+                    item_sideinfo_dict[row[self.itemid_column_name]
+                                    ] = item_sideinfo_indexes
+
+                for column in self.item_sideinfo_columns:
+                    if column == 'genre':
+                        continue
+                    value = row[column]
+                    item_sideinfo_indexes.append(self.item_sideinfo_offset_dict[column + str(value)])
+                item_sideinfo_dict[row[self.itemid_column_name]] = item_sideinfo_indexes
 
         print('  - Train_df dictionaries')
         for _, row in self.train_df.iterrows():
+            pos_interaction = (row[self.itemid_column_name],)
+            contexts = tuple()
+            for context in self.context_list:
+                contexts = contexts + (row[context],)
+            pos_interaction = pos_interaction + (contexts,)
+
             if row[self.userid_column_name] not in train_set_user_pos_interactions:
-                # TODO: This shouldn't be hard-coded
                 train_set_user_pos_interactions[row[self.userid_column_name]] = [
-                    (row['movieId'], row['weekday'], row['timeofday'])]
+                    pos_interaction]
                 # If user has not been observed yet, save sideinfo
                 user_sideinfo_indexes = []
                 for column in self.user_sideinfo_columns:
@@ -195,17 +235,26 @@ class LoadMovieLens():
                                    ] = user_sideinfo_indexes
             else:
                 train_set_user_pos_interactions[row[self.userid_column_name]].append(
-                    (row['movieId'], row['weekday'], row['timeofday']))
+                    pos_interaction)
 
             if row[self.itemid_column_name] not in item_sideinfo_dict:
                 # If movie has not been observed yet, save sideinfo
                 item_sideinfo_indexes = []
-                for column in self.genrelist:
-                    if row[column] == 1:
-                        item_sideinfo_indexes.append(
-                            self.item_sideinfo_offset_dict[column + str(1)])
-                item_sideinfo_dict[row[self.itemid_column_name]
-                                   ] = item_sideinfo_indexes
+
+                if 'genre' in self.item_sideinfo_columns:
+                    for column in self.genrelist:
+                        if row[column] == 1:
+                            item_sideinfo_indexes.append(
+                                self.item_sideinfo_offset_dict[column + str(1)])
+                    item_sideinfo_dict[row[self.itemid_column_name]
+                                    ] = item_sideinfo_indexes
+
+                for column in self.item_sideinfo_columns:
+                    if column == 'genre':
+                        continue
+                    value = row[column]
+                    item_sideinfo_indexes.append(self.item_sideinfo_offset_dict[column + str(value)])
+                item_sideinfo_dict[row[self.itemid_column_name]] = item_sideinfo_indexes
 
         print("  - Negative interactions")
         unique_train_items = self.train_df[self.itemid_column_name].unique()
@@ -250,16 +299,18 @@ class LoadMovieLens():
             pos_interactions.append([self.item_offset_dict[pos[0]]])
             neg_interactions.append([self.item_offset_dict[neg]])
             user_contexts = []
-            for index, context in enumerate(self.context_list, 1):
+
+            for index, context in enumerate(self.context_list, 0):
                 user_contexts.append(
-                    self.context_offset_dict[context + str(pos[index])])
+                    self.context_offset_dict[context + str(pos[1][index])])
             contexts.append(user_contexts)
             user_sideinfo.append(self.user_sideinfo_dict[userId])
             
             sideinfo = self.item_sideinfo_dict[pos[0]]
-            # if the item has more than one genre, choose a random one
-            if len(sideinfo) > 1:
-                sideinfo = [random.choice(sideinfo)]
+            # TODO if the item has more than one genre, choose a random one
+            if 'genre' in self.item_sideinfo_columns:
+                if len(sideinfo) > 1:
+                    sideinfo = [random.choice(sideinfo)]
             item_sideinfo.append(sideinfo)
 
         return {'user_ids': user_ids, 'pos_interactions': pos_interactions, 'neg_interactions': neg_interactions,
