@@ -48,8 +48,6 @@ class Data(object):
                # break
             for index, row in reverse_full_df.iterrows():
                 if row['userId'] == userid:
-                   # count += 1
-                    print("there it is ")
                     loo_interactions.append(row)
                     self.train_df.drop(index, inplace=True)
                     break
