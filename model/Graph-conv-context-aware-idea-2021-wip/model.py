@@ -71,7 +71,7 @@ class CSGCN():
                 tf.summary.scalar('test_recall_last', self.test_recall_last)
                 self.test_f1_last = tf.placeholder(tf.float32)
                 tf.summary.scalar('test_f1_last', self.test_f1_last)
-            
+
             self.test_ndcg_first = tf.placeholder(tf.float32)
             tf.summary.scalar('test_ndcg_first', self.test_ndcg_first)
             self.test_ndcg_last = tf.placeholder(tf.float32)
@@ -353,11 +353,11 @@ class CSGCN():
             for item in self.data.test_df[self.data.itemid_column_name].unique():
                 item_index = self.data.item_offset_dict[item]
                 item_sideinfo = self.data.item_sideinfo_dict[item]
-                
+
                 # if the item has more than one genre, choose a random one
                 if len(item_sideinfo) > 1:
                     item_sideinfo = [random.choice(item_sideinfo)]
-                
+
                 user_indexes.append([user_index])
                 user_sideinfos.append(user_sideinfo)
                 item_indexes.append([item_index])
@@ -394,7 +394,7 @@ class CSGCN():
             item_indexes = []
             item_sideinfos = []
             contexts = []
-            for item in self.data.test_df[self.data.itemid_column_name].unique():
+            for item in self.data.full_df[self.data.itemid_column_name].unique():
                 item_index = self.data.item_offset_dict[item]
                 item_sideinfo = self.data.item_sideinfo_dict[item]
 
@@ -425,7 +425,12 @@ class CSGCN():
                 else:
                     if score > pos_scores_dict[itemId]:
                         pos_scores_dict[itemId] = score
-            pos_scores_tuple_list = [(k, v) for k, v in pos_scores_dict.items()] 
+            pos_scores_tuple_list = [(k, v) for k, v in pos_scores_dict.items()]
+            # pos_scores_tuple_list (itemID, score)
+            # user_train_pos_interactions ([itemIds])
+            user_train_pos_interactions = [itemId for (itemId, context) in self.data.train_set_user_pos_interactions[userId]]
+            pos_scores_tuple_list = [-np.inf if itemId in user_train_pos_interactions else score for (itemId, score) in pos_scores_tuple_list]
+
             scores[userId] = pos_scores_tuple_list
 
         ret = defaultdict(list)

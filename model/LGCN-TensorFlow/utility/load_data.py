@@ -15,7 +15,7 @@ class Data(object):
     def __init__(self, path, batch_size):
         self.path = path
         self.batch_size = batch_size
-        self.loo_eval = True
+        self.loo_eval = False
 
         if self.loo_eval:
             self.init_loo_split()
@@ -208,7 +208,7 @@ class Data(object):
 
     def sample(self):
         if self.batch_size <= self.n_users:
-            users = rd.sample(self.exist_users_train, self.batch_size)
+            users = rd.sample(population=list(self.exist_users_train), k=self.batch_size)
         else:
             users = [rd.choice(self.exist_users_train) for _ in range(self.batch_size)]
 
