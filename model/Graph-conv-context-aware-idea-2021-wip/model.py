@@ -8,6 +8,7 @@ import pickle
 from utility.parser import parse_args
 from collections import defaultdict
 import random
+from tqdm import tqdm
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 cpus = [x.name for x in device_lib.list_local_devices() if x.device_type == 'CPU']
@@ -16,6 +17,7 @@ args = parse_args()
 
 class CSGCN():
     def __init__(self, sess, data):
+        self.training = tf.placeholder_with_default(tf.bool, name='training')
         self.random_seed = args.seed
         random.seed(self.random_seed)
         self.decay = args.decay
@@ -24,6 +26,7 @@ class CSGCN():
         self.weight_size = eval(args.weight_size)
         self.n_layers = len(self.weight_size)
         self.mess_dropout = eval(args.mess_dropout)
+        self.node_dropout = args.keep_prob
         self.emb_dim = args.embed_size
         self.epochs = args.epoch
         self.batch_size = args.batch
@@ -179,8 +182,8 @@ class CSGCN():
         self.neg_scores = self._predict(self.user_embeddings, self.neg_interactions_embeddings,
                                         self.context_embeddings, self.user_bias, self.neg_item_bias)
 
-        self.pos_scores = tf.nn.dropout(self.pos_scores, args.keep_prob)
-        self.neg_scores = tf.nn.dropout(self.neg_scores, args.keep_prob)
+        # self.pos_scores = tf.nn.dropout(self.pos_scores, self.node_dropout)
+        # self.neg_scores = tf.nn.dropout(self.neg_scores, self.node_dropout)
 
         self.loss = self._bpr_loss(self.pos_scores, self.neg_scores)
         self.opt = self.optimizer.minimize(self.loss[0])
@@ -216,11 +219,12 @@ class CSGCN():
 
         for k in range(0, self.n_layers):
             side_embeddings = tf.sparse_tensor_dense_matmul(uic_adj_mat, embs)
-            embs = side_embeddings
+            ego_embeddings = side_embeddings
 
             # Message dropout
-            ego_embeddings = tf.nn.dropout(embs, self.mess_dropout[k])
-            norm_embeddings = tf.nn.l2_normalize(embs, axis=1)
+            if self.training is True:
+                ego_embeddings = tf.nn.dropout(ego_embeddings, self.mess_dropout[k])
+            norm_embeddings = tf.nn.l2_normalize(ego_embeddings, axis=1)
             all_embeddings += [norm_embeddings]
 
         all_embeddings = tf.stack(all_embeddings, 1)
@@ -304,7 +308,8 @@ class CSGCN():
             summary_train_loss = sess.run(self.merged_train_loss,
                                           feed_dict={self.train_loss: loss,
                                                      self.train_mf_loss: mf_loss,
-                                                     self.train_emb_loss: emb_loss})
+                                                     self.train_emb_loss: emb_loss,
+                                                     self.training: True})
             train_writer.add_summary(summary_train_loss, epoch)
 
             if epoch % 25 == 0:
@@ -319,7 +324,7 @@ class CSGCN():
                                                                 self.test_f1_first: ret['f1'][0],
                                                                 self.test_f1_last: ret['f1'][-1],
                                                                 self.test_ndcg_first: ret['ndcg'][0],
-                                                                self.test_ndcg_last: ret['ndcg'][-1]
+                                                                self.test_ndcg_last: ret['ndcg'][-1],
                                                                 })
                 elif args.eval_method == 'loo':
                     ret = self.evaluate_loo(epoch)
@@ -328,7 +333,7 @@ class CSGCN():
                                                                                 self.test_ndcg_first: ret['ndcg'][0],
                                                                                 self.test_ndcg_last: ret['ndcg'][-1],
                                                                                 self.test_mrr_first: ret['mrr'][0],
-                                                                                self.test_mrr_last: ret['mrr'][-1]
+                                                                                self.test_mrr_last: ret['mrr'][-1],
                                                                                 })
                 train_writer.add_summary(summary_test_acc, epoch)
 
@@ -366,7 +371,9 @@ class CSGCN():
 
             feed_dict = {self.users: user_indexes, self.pos_interactions: item_indexes,
                          self.context: contexts, self.user_sideinfo: user_sideinfos,
-                         self.item_sideinfo: item_sideinfos}
+                         self.item_sideinfo: item_sideinfos,
+                         self.training: False
+                         }
             pos_scores = self.sess.run(self.pos_scores, feed_dict=feed_dict)
             pos_scores = np.sum(pos_scores, axis=1)
             pos_scores = list(zip(unique_item_ids, pos_scores))
@@ -385,7 +392,7 @@ class CSGCN():
     def evaluate(self, epoch):
         scores = dict()
 
-        for userId in self.data.test_df[self.data.userid_column_name].unique():
+        for userId in tqdm(self.data.test_df[self.data.userid_column_name].unique()):
             user_index = self.data.user_offset_dict[userId]
             user_sideinfo = self.data.user_sideinfo_dict[userId]
 
@@ -412,7 +419,8 @@ class CSGCN():
 
             feed_dict = {self.users: user_indexes, self.pos_interactions: item_indexes,
                             self.context: contexts, self.user_sideinfo: user_sideinfos,
-                            self.item_sideinfo: item_sideinfos}
+                            self.item_sideinfo: item_sideinfos,
+                            self.training: False}
             pos_scores = self.sess.run(self.pos_scores, feed_dict=feed_dict)
             pos_scores = np.sum(pos_scores, axis=1)
             item_ids = [self.data.item_offset_to_id_dict[x[0]] for x in item_indexes]
@@ -429,7 +437,7 @@ class CSGCN():
             # pos_scores_tuple_list (itemID, score)
             # user_train_pos_interactions ([itemIds])
             user_train_pos_interactions = [itemId for (itemId, context) in self.data.train_set_user_pos_interactions[userId]]
-            pos_scores_tuple_list = [-np.inf if itemId in user_train_pos_interactions else score for (itemId, score) in pos_scores_tuple_list]
+            pos_scores_tuple_list = [(itemId, -np.inf) if itemId in user_train_pos_interactions else (itemId, score) for (itemId, score) in pos_scores_tuple_list]
 
             scores[userId] = pos_scores_tuple_list
 

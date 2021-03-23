@@ -2,7 +2,7 @@ import argparse
 
 def parse_args():
     parser = argparse.ArgumentParser(description="CSGCN.")
-    parser.add_argument('--load', type=int, default=0,
+    parser.add_argument('--load', type=int, default=1,
                         help='1 = Load saved data. 0 = Save new data.')
     parser.add_argument('--seed', type=int, default=2021,
                         help='Seed for randoms.')
