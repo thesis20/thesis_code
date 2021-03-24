@@ -268,6 +268,12 @@ class ISLGCN():
                     if score > batch_ratings_dict[itemId]:
                         batch_ratings_dict[itemId] = score
             batch_ratings_tuple_list = [(k, v) for k, v in batch_ratings_dict.items()] 
+            
+            if userId in self.data.train_set_user_pos_interactions:
+                user_train_pos_interactions = [itemId for (itemId, context) in self.data.train_set_user_pos_interactions[userId]]
+            else:
+                user_train_pos_interactions = []
+            batch_ratings_tuple_list = [(itemId, -np.inf) if itemId in user_train_pos_interactions else (itemId, score) for (itemId, score) in batch_ratings_tuple_list]
             scores[userId] = batch_ratings_tuple_list
 
         ret = defaultdict(list)

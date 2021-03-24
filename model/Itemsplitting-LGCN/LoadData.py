@@ -15,7 +15,7 @@ class LoadData():
                                 'thriller', 'war', 'western']
                 self.user_sideinfo_columns = [
                     'age', 'gender', 'occupation', 'zipcode']
-                self.context_list = []
+                self.context_list = ['weekday', 'timeofday']
                 self.userid_column_name = 'userId'
                 self.itemid_column_name = 'movieId'
                 self.path = 'Data/ml100k/'
@@ -201,14 +201,13 @@ class LoadData():
 
         print('  - Train_df dictionaries')
         for _, row in self.train_df.iterrows():
-            pos_interaction = (row['movieId'],)
+            pos_interaction = (row[self.itemid_column_name],)
             contexts = tuple()
             for context in self.context_list:
                 contexts = contexts + (row[context],)
             pos_interaction = pos_interaction + (contexts,)
             
             if row[self.userid_column_name] not in train_set_user_pos_interactions:
-                # TODO: This shouldn't be hard-coded
                 train_set_user_pos_interactions[row[self.userid_column_name]] = [
                     pos_interaction]
                 # If user has not been observed yet, save sideinfo
