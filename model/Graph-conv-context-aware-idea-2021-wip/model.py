@@ -174,16 +174,10 @@ class CSGCN():
         self.neg_item_bias = tf.nn.embedding_lookup(
             self.weights['item_bias'], self.neg_interactions)
 
-        self.batch_ratings = tf.matmul(
-            self.user_embeddings, self.pos_interactions_embeddings, transpose_a=False, transpose_b=True)
-
         self.pos_scores = self._predict(self.user_embeddings, self.pos_interactions_embeddings,
                                         self.context_embeddings, self.user_bias, self.pos_item_bias)
         self.neg_scores = self._predict(self.user_embeddings, self.neg_interactions_embeddings,
                                         self.context_embeddings, self.user_bias, self.neg_item_bias)
-
-        # self.pos_scores = tf.nn.dropout(self.pos_scores, self.node_dropout)
-        # self.neg_scores = tf.nn.dropout(self.neg_scores, self.node_dropout)
 
         self.loss = self._bpr_loss(self.pos_scores, self.neg_scores)
         self.opt = self.optimizer.minimize(self.loss[0])
@@ -238,14 +232,17 @@ class CSGCN():
         # TODO: Overvej om vi skal fjerne user embs og bias og tage dem fra self i stedet
         user_emb_sum = tf.reduce_sum(user_embs, 1)
         item_emb_sum = tf.reduce_sum(item_embs, 1)
-        emb_sum = tf.add(user_emb_sum, item_emb_sum)
+        context_emb_sum = tf.reduce_sum(context_embs, 1)
+        emb_sum = tf.add_n([user_emb_sum, item_emb_sum, context_emb_sum])
         first_term = tf.square(emb_sum)
 
         user_emb_sq = tf.square(user_embs)
         item_emb_sq = tf.square(item_embs)
+        context_emb_sq = tf.square(context_embs)
         user_emb_sq_sum = tf.reduce_sum(user_emb_sq, 1)
         item_emb_sq_sum = tf.reduce_sum(item_emb_sq, 1)
-        second_term = tf.add(user_emb_sq_sum, item_emb_sq_sum)
+        context_emb_sq_sum = tf.reduce_sum(context_emb_sq, 1)
+        second_term = tf.add_n([user_emb_sq_sum, item_emb_sq_sum])
 
         pred = 0.5 * tf.subtract(first_term, second_term)
 
@@ -260,7 +257,7 @@ class CSGCN():
             self.pos_i_g_embeddings_pre) + tf.nn.l2_loss(self.neg_i_g_embeddings_pre)
         regularizer = regularizer / self.batch_size
 
-        mf_loss = tf.reduce_mean(-tf.log(tf.nn.sigmoid(pos_scores - neg_scores)))
+        mf_loss = tf.reduce_mean(tf.nn.softplus(-(pos_scores - neg_scores)))
         emb_loss = self.decay * regularizer
 
         loss = emb_loss + mf_loss
@@ -314,7 +311,7 @@ class CSGCN():
 
             if epoch % 25 == 0:
                 print(f"The total loss in {epoch}th iteration is: {loss}")
-            if epoch > 0 and epoch % args.eval_interval == 0:
+            if (epoch > 0 and epoch % args.eval_interval == 0) or epoch == self.epochs:
                 if args.eval_method == 'fold':
                     ret = self.evaluate(epoch)
                     summary_test_acc = sess.run(self.merged_test_acc, feed_dict={self.test_precision_first: ret['precision'][0],
