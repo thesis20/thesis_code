@@ -5,6 +5,20 @@ class evaluator():
     def __init__(self):
         print("Evaluating initialized")
     
+    def lgcn_ndcg(self, user_topk, ground_truth):
+        len_rank = len(user_topk)
+        len_gt = len(ground_truth)
+        idcg_len = min(len_gt, len_rank)
+
+        # calculate idcg
+        idcg = np.cumsum(1.0 / np.log2(np.arange(2, len_rank + 2)))
+        idcg[idcg_len:] = idcg[idcg_len-1]
+
+        # idcg = np.cumsum(1.0/np.log2(np.arange(2, len_rank+2)))
+        dcg = np.cumsum([1.0/np.log2(idx+2) if item in ground_truth else 0.0 for idx, item in enumerate(user_topk)])
+        result = dcg/idcg
+        return np.mean(result)
+
     def ndcg(self, user_topk, ground_truth):
         dcg, idcg, gain = 0.0, 0.0, 1
         position = 0
@@ -142,6 +156,7 @@ class evaluator():
         precision = self.precision(user_topk, ground_truth_user)
         recall = self.recall(user_topk, ground_truth_user)
         f1 = self.f1(precision, recall)
-        ndcg = self.ndcg(user_topk, ground_truth_user)
+        # ndcg = self.ndcg(user_topk, ground_truth_user)
+        ndcg = self.lgcn_ndcg(user_topk, ground_truth_user)
         return precision, recall, f1, ndcg
 

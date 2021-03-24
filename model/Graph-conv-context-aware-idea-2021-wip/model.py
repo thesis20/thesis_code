@@ -17,7 +17,7 @@ args = parse_args()
 
 class CSGCN():
     def __init__(self, sess, data):
-        self.training = tf.placeholder_with_default(tf.bool, name='training')
+        self.training = tf.placeholder(tf.bool, name='training')
         self.random_seed = args.seed
         random.seed(self.random_seed)
         self.decay = args.decay
@@ -436,7 +436,10 @@ class CSGCN():
             pos_scores_tuple_list = [(k, v) for k, v in pos_scores_dict.items()]
             # pos_scores_tuple_list (itemID, score)
             # user_train_pos_interactions ([itemIds])
-            user_train_pos_interactions = [itemId for (itemId, context) in self.data.train_set_user_pos_interactions[userId]]
+            if userId in self.data.train_set_user_pos_interactions:
+                user_train_pos_interactions = [itemId for (itemId, context) in self.data.train_set_user_pos_interactions[userId]]
+            else:
+                user_train_pos_interactions = []
             pos_scores_tuple_list = [(itemId, -np.inf) if itemId in user_train_pos_interactions else (itemId, score) for (itemId, score) in pos_scores_tuple_list]
 
             scores[userId] = pos_scores_tuple_list
