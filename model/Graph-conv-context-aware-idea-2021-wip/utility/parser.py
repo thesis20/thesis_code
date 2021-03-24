@@ -14,15 +14,15 @@ def parse_args():
                         help='Number of epochs.')
     parser.add_argument('--weight_size', nargs='?', default='[64, 64, 64, 64]',
                         help='Size of weights (amount of layers)')
-    parser.add_argument('--mess_dropout', nargs='?', default='[0.8, 0.8, 0.8, 0.8]',
-                        help='Keep probability w.r.t. message dropout (i.e., 1-dropout_ratio) for each deep layer. 0: no dropout.')
+    parser.add_argument('--mess_dropout', nargs='?', default='[1.0, 1.0, 1.0, 1.0]',
+                        help='Keep probability w.r.t. message dropout (i.e., 1-dropout_ratio) for each deep layer. 1: no dropout.')
     parser.add_argument('--batch', type=int, default=95,
                         help='Batch size.')
     parser.add_argument('--lr', type=float, default=0.01,
                         help='Learning rate.')
     parser.add_argument('--decay', type=float, default=1e-5,
                         help='Decay for BPR.')
-    parser.add_argument('--keep_prob', type=float, default='0.8',
+    parser.add_argument('--keep_prob', type=float, default=0.8,
                         help='Keep probability w.r.t. node dropout (i.e., 1-dropout_ratio) for each deep layer. 1: no dropout.')
     parser.add_argument('--ks', nargs='?', default='[20, 50]',
                         help='Top k(s) to recommend')
