@@ -132,6 +132,7 @@ class CSGCN():
     def _init_graph(self):
         tf.set_random_seed(self.random_seed)
         self.mess_drop_prob = tf.placeholder_with_default([1.] * self.n_layers, shape=[None])
+        self.node_drop_prob = tf.placeholder_with_default(1.0, shape=())
 
         self.users = tf.placeholder(tf.int32, shape=[None, None])
         self.pos_interactions = tf.placeholder(tf.int32, shape=[None, None])
@@ -181,6 +182,9 @@ class CSGCN():
         self.neg_scores = self._predict(self.user_embeddings, self.neg_interactions_embeddings,
                                         self.context_embeddings, self.user_bias, self.neg_item_bias)
 
+        self.pos_scores = tf.layers.dropout(self.pos_scores, self.node_drop_prob)
+        self.neg_scores = tf.layers.dropout(self.neg_scores, self.node_drop_prob)
+
         self.loss = self._bpr_loss(self.pos_scores, self.neg_scores)
         self.opt = self.optimizer.minimize(self.loss[0])
         self.init = tf.global_variables_initializer()
@@ -207,8 +211,8 @@ class CSGCN():
             is_comb_matmul, [self.data.n_items, self.data.n_item_sideinfo])[0]
 
         # add sideinfo to the user embeddings and item embeddings
-        ue = tf.multiply(self.weights['user_embedding'], usr_embs)
-        ie = tf.multiply(self.weights['item_embedding'], is_embs)
+        ue = tf.add(self.weights['user_embedding'], usr_embs)
+        ie = tf.add(self.weights['item_embedding'], is_embs)
 
         embs = tf.concat([ue, ie, self.weights['context_embedding']], axis=0)
         all_embeddings = [embs]
@@ -277,7 +281,8 @@ class CSGCN():
         feed_dict = {self.users: data['user_ids'], self.pos_interactions: data['pos_interactions'],
                      self.neg_interactions: data['neg_interactions'], self.context: data['contexts'],
                      self.user_sideinfo: data['user_sideinfo'], self.item_sideinfo: data['item_sideinfo'],
-                     self.mess_drop_prob: self.mess_dropout}
+                     self.mess_drop_prob: self.mess_dropout,
+                     self.node_drop_prob: self.node_dropout}
         return self.sess.run([self.loss, self.opt], feed_dict=feed_dict)
 
     def train(self):

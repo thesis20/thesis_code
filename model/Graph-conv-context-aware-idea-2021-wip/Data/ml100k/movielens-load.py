@@ -1,6 +1,7 @@
 import pandas as pd
 from sklearn.model_selection import train_test_split
 import datetime
+import numpy as np
 
 def convert_datetime_to_timeofday(datetime):
     # convert the datetime to different timeofday intervals
@@ -55,8 +56,6 @@ items = pd.read_csv('u.item', sep='|',
                         'musical', 'mystery', 'romance', 'scifi',
                         'thriller', 'war', 'western'], encoding='latin-1')
 
-
-
 joined = ratings.merge(items).merge(user)
 joined.drop('rating', inplace=True, axis=1)
 joined.drop('title', inplace=True, axis=1)
@@ -75,6 +74,8 @@ joined = joined.reindex(columns=column_names)
 print(joined.head())
 
 joined.to_csv('out.txt', index=False)
+
+np.random.seed(2021)
 train, test = train_test_split(joined, test_size=0.2)
 
 train.to_csv('train.txt', index=False)

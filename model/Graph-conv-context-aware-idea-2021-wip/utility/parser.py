@@ -22,13 +22,13 @@ def parse_args():
                         help='Learning rate.')
     parser.add_argument('--decay', type=float, default=1e-5,
                         help='Decay for BPR.')
-    parser.add_argument('--keep_prob', type=float, default=0.8,
+    parser.add_argument('--keep_prob', type=float, default=1.0,
                         help='Keep probability w.r.t. node dropout (i.e., 1-dropout_ratio) for each deep layer. 1: no dropout.')
     parser.add_argument('--ks', nargs='?', default='[20, 50]',
                         help='Top k(s) to recommend')
-    parser.add_argument('--eval_interval', type=int, default=300,
+    parser.add_argument('--eval_interval', type=int, default=1000,
                         help='Interval between evaluations (epochs)')
-    parser.add_argument('--initializer', nargs='?', default='glorot',
+    parser.add_argument('--initializer', nargs='?', default='normal',
                     help='Choose an initializer from {xavier, normal, glorot, glorot_normal}')
     parser.add_argument('--optimizer', nargs='?', default='adam',
                         help='Choose an optimizer from {adam, adagrad, RMSProp, Adadelta}')
