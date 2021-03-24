@@ -17,8 +17,28 @@ def convert_datetime_to_timeofday(datetime):
     elif 20 < datetime.hour <= 24:
         return 5
 
+def convert_age_to_age_group(age):
+    if age < 10:
+        return 0
+    elif age < 15:
+        return 1
+    elif age < 20:
+        return 2
+    elif age < 30:
+        return 3
+    elif age < 40:
+        return 4
+    elif age < 50:
+        return 5
+    elif age < 60:
+        return 6
+    else:
+        return 7
+
+
 ratings = pd.read_csv('u.data', sep='\t', names=['userId', 'movieId', 'rating', 'timestamp'])
 user = pd.read_csv('u.user', sep='|', names=['userId', 'age', 'gender', 'occupation', 'zipcode'])
+user['age'] = user['age'].apply(lambda x: convert_age_to_age_group(x))
 
 # convert timestamp to a datetime
 ratings['datetime'] = ratings['timestamp'].apply(lambda x: datetime.datetime.fromtimestamp(x))
