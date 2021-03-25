@@ -24,7 +24,7 @@ class LoadDataset():
                               'thriller', 'war', 'western']
             self.item_sideinfo_columns = ['genre']
             self.user_sideinfo_columns = [
-                'age', 'gender', 'occupation', 'zipcode']
+                'age', 'gender', 'occupation']
             self.context_list = ['weekday', 'timeofday']
             self.userid_column_name = 'userId'
             self.itemid_column_name = 'movieId'
