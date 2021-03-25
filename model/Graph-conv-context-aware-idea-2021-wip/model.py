@@ -8,6 +8,7 @@ import pickle
 from utility.parser import parse_args
 from collections import defaultdict
 import random
+from tqdm import tqdm
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 cpus = [x.name for x in device_lib.list_local_devices() if x.device_type == 'CPU']
@@ -24,6 +25,7 @@ class CSGCN():
         self.weight_size = eval(args.weight_size)
         self.n_layers = len(self.weight_size)
         self.mess_dropout = eval(args.mess_dropout)
+        self.node_dropout = args.keep_prob
         self.emb_dim = args.embed_size
         self.epochs = args.epoch
         self.batch_size = args.batch
@@ -71,7 +73,7 @@ class CSGCN():
                 tf.summary.scalar('test_recall_last', self.test_recall_last)
                 self.test_f1_last = tf.placeholder(tf.float32)
                 tf.summary.scalar('test_f1_last', self.test_f1_last)
-            
+
             self.test_ndcg_first = tf.placeholder(tf.float32)
             tf.summary.scalar('test_ndcg_first', self.test_ndcg_first)
             self.test_ndcg_last = tf.placeholder(tf.float32)
@@ -129,6 +131,8 @@ class CSGCN():
 
     def _init_graph(self):
         tf.set_random_seed(self.random_seed)
+        self.mess_drop_prob = tf.placeholder_with_default([1.] * self.n_layers, shape=[None])
+        self.node_drop_prob = tf.placeholder_with_default(1.0, shape=())
 
         self.users = tf.placeholder(tf.int32, shape=[None, None])
         self.pos_interactions = tf.placeholder(tf.int32, shape=[None, None])
@@ -162,6 +166,8 @@ class CSGCN():
             self.weights['item_embedding'], self.pos_interactions)
         self.neg_i_g_embeddings_pre = tf.nn.embedding_lookup(
             self.weights['item_embedding'], self.neg_interactions)
+        self.context_embeddings_pre = tf.nn.embedding_lookup(
+            self.weights['context_embedding'], self.context)
 
         # Biases
         self.user_bias = tf.nn.embedding_lookup(
@@ -171,16 +177,13 @@ class CSGCN():
         self.neg_item_bias = tf.nn.embedding_lookup(
             self.weights['item_bias'], self.neg_interactions)
 
-        self.batch_ratings = tf.matmul(
-            self.user_embeddings, self.pos_interactions_embeddings, transpose_a=False, transpose_b=True)
-
         self.pos_scores = self._predict(self.user_embeddings, self.pos_interactions_embeddings,
                                         self.context_embeddings, self.user_bias, self.pos_item_bias)
         self.neg_scores = self._predict(self.user_embeddings, self.neg_interactions_embeddings,
                                         self.context_embeddings, self.user_bias, self.neg_item_bias)
 
-        self.pos_scores = tf.nn.dropout(self.pos_scores, args.keep_prob)
-        self.neg_scores = tf.nn.dropout(self.neg_scores, args.keep_prob)
+        self.pos_scores = tf.layers.dropout(self.pos_scores, self.node_drop_prob)
+        self.neg_scores = tf.layers.dropout(self.neg_scores, self.node_drop_prob)
 
         self.loss = self._bpr_loss(self.pos_scores, self.neg_scores)
         self.opt = self.optimizer.minimize(self.loss[0])
@@ -208,19 +211,20 @@ class CSGCN():
             is_comb_matmul, [self.data.n_items, self.data.n_item_sideinfo])[0]
 
         # add sideinfo to the user embeddings and item embeddings
-        ue = tf.multiply(self.weights['user_embedding'], usr_embs)
-        ie = tf.multiply(self.weights['item_embedding'], is_embs)
+        ue = tf.add(self.weights['user_embedding'], usr_embs)
+        ie = tf.add(self.weights['item_embedding'], is_embs)
 
         embs = tf.concat([ue, ie, self.weights['context_embedding']], axis=0)
         all_embeddings = [embs]
 
         for k in range(0, self.n_layers):
             side_embeddings = tf.sparse_tensor_dense_matmul(uic_adj_mat, embs)
-            embs = side_embeddings
+            ego_embeddings = side_embeddings
 
             # Message dropout
-            ego_embeddings = tf.nn.dropout(embs, self.mess_dropout[k])
-            norm_embeddings = tf.nn.l2_normalize(embs, axis=1)
+            # ego_embeddings = tf.nn.dropout(ego_embeddings, self.mess_dropout[k])
+            ego_embeddings = tf.nn.dropout(ego_embeddings, self.mess_drop_prob[k])
+            norm_embeddings = tf.nn.l2_normalize(ego_embeddings, axis=1)
             all_embeddings += [norm_embeddings]
 
         all_embeddings = tf.stack(all_embeddings, 1)
@@ -234,14 +238,17 @@ class CSGCN():
         # TODO: Overvej om vi skal fjerne user embs og bias og tage dem fra self i stedet
         user_emb_sum = tf.reduce_sum(user_embs, 1)
         item_emb_sum = tf.reduce_sum(item_embs, 1)
-        emb_sum = tf.add(user_emb_sum, item_emb_sum)
+        context_emb_sum = tf.reduce_sum(context_embs, 1)
+        emb_sum = tf.add_n([user_emb_sum, item_emb_sum])
         first_term = tf.square(emb_sum)
 
         user_emb_sq = tf.square(user_embs)
         item_emb_sq = tf.square(item_embs)
+        context_emb_sq = tf.square(context_embs)
         user_emb_sq_sum = tf.reduce_sum(user_emb_sq, 1)
         item_emb_sq_sum = tf.reduce_sum(item_emb_sq, 1)
-        second_term = tf.add(user_emb_sq_sum, item_emb_sq_sum)
+        context_emb_sq_sum = tf.reduce_sum(context_emb_sq, 1)
+        second_term = tf.add_n([user_emb_sq_sum, item_emb_sq_sum, context_emb_sq_sum])
 
         pred = 0.5 * tf.subtract(first_term, second_term)
 
@@ -253,10 +260,13 @@ class CSGCN():
 
     def _bpr_loss(self, pos_scores, neg_scores):
         regularizer = tf.nn.l2_loss(self.u_g_embeddings_pre) + tf.nn.l2_loss(
-            self.pos_i_g_embeddings_pre) + tf.nn.l2_loss(self.neg_i_g_embeddings_pre)
+            self.pos_i_g_embeddings_pre) + tf.nn.l2_loss(self.neg_i_g_embeddings_pre) \
+                + tf.nn.l2_loss(self.context_embeddings_pre) \
+                + tf.nn.l2_loss(self.user_sideinfo_embeddings) \
+                + tf.nn.l2_loss(self.item_sideinfo_embeddings)
         regularizer = regularizer / self.batch_size
 
-        mf_loss = tf.reduce_mean(-tf.log(tf.nn.sigmoid(pos_scores - neg_scores)))
+        mf_loss = tf.reduce_mean(tf.nn.softplus(-(pos_scores - neg_scores)))
         emb_loss = self.decay * regularizer
 
         loss = emb_loss + mf_loss
@@ -270,7 +280,9 @@ class CSGCN():
     def _partial_fit(self, data):
         feed_dict = {self.users: data['user_ids'], self.pos_interactions: data['pos_interactions'],
                      self.neg_interactions: data['neg_interactions'], self.context: data['contexts'],
-                     self.user_sideinfo: data['user_sideinfo'], self.item_sideinfo: data['item_sideinfo']}
+                     self.user_sideinfo: data['user_sideinfo'], self.item_sideinfo: data['item_sideinfo'],
+                     self.mess_drop_prob: self.mess_dropout,
+                     self.node_drop_prob: self.node_dropout}
         return self.sess.run([self.loss, self.opt], feed_dict=feed_dict)
 
     def train(self):
@@ -309,7 +321,7 @@ class CSGCN():
 
             if epoch % 25 == 0:
                 print(f"The total loss in {epoch}th iteration is: {loss}")
-            if epoch > 0 and epoch % args.eval_interval == 0:
+            if (epoch > 0 and epoch % args.eval_interval == 0) or epoch == self.epochs:
                 if args.eval_method == 'fold':
                     ret = self.evaluate(epoch)
                     summary_test_acc = sess.run(self.merged_test_acc, feed_dict={self.test_precision_first: ret['precision'][0],
@@ -319,7 +331,7 @@ class CSGCN():
                                                                 self.test_f1_first: ret['f1'][0],
                                                                 self.test_f1_last: ret['f1'][-1],
                                                                 self.test_ndcg_first: ret['ndcg'][0],
-                                                                self.test_ndcg_last: ret['ndcg'][-1]
+                                                                self.test_ndcg_last: ret['ndcg'][-1],
                                                                 })
                 elif args.eval_method == 'loo':
                     ret = self.evaluate_loo(epoch)
@@ -328,7 +340,7 @@ class CSGCN():
                                                                                 self.test_ndcg_first: ret['ndcg'][0],
                                                                                 self.test_ndcg_last: ret['ndcg'][-1],
                                                                                 self.test_mrr_first: ret['mrr'][0],
-                                                                                self.test_mrr_last: ret['mrr'][-1]
+                                                                                self.test_mrr_last: ret['mrr'][-1],
                                                                                 })
                 train_writer.add_summary(summary_test_acc, epoch)
 
@@ -353,11 +365,11 @@ class CSGCN():
             for item in self.data.test_df[self.data.itemid_column_name].unique():
                 item_index = self.data.item_offset_dict[item]
                 item_sideinfo = self.data.item_sideinfo_dict[item]
-                
+
                 # if the item has more than one genre, choose a random one
                 if len(item_sideinfo) > 1:
                     item_sideinfo = [random.choice(item_sideinfo)]
-                
+
                 user_indexes.append([user_index])
                 user_sideinfos.append(user_sideinfo)
                 item_indexes.append([item_index])
@@ -366,7 +378,8 @@ class CSGCN():
 
             feed_dict = {self.users: user_indexes, self.pos_interactions: item_indexes,
                          self.context: contexts, self.user_sideinfo: user_sideinfos,
-                         self.item_sideinfo: item_sideinfos}
+                         self.item_sideinfo: item_sideinfos
+                         }
             pos_scores = self.sess.run(self.pos_scores, feed_dict=feed_dict)
             pos_scores = np.sum(pos_scores, axis=1)
             pos_scores = list(zip(unique_item_ids, pos_scores))
@@ -385,7 +398,7 @@ class CSGCN():
     def evaluate(self, epoch):
         scores = dict()
 
-        for userId in self.data.test_df[self.data.userid_column_name].unique():
+        for userId in tqdm(self.data.test_df[self.data.userid_column_name].unique()):
             user_index = self.data.user_offset_dict[userId]
             user_sideinfo = self.data.user_sideinfo_dict[userId]
 
@@ -394,7 +407,7 @@ class CSGCN():
             item_indexes = []
             item_sideinfos = []
             contexts = []
-            for item in self.data.test_df[self.data.itemid_column_name].unique():
+            for item in self.data.full_df[self.data.itemid_column_name].unique():
                 item_index = self.data.item_offset_dict[item]
                 item_sideinfo = self.data.item_sideinfo_dict[item]
 
@@ -425,7 +438,15 @@ class CSGCN():
                 else:
                     if score > pos_scores_dict[itemId]:
                         pos_scores_dict[itemId] = score
-            pos_scores_tuple_list = [(k, v) for k, v in pos_scores_dict.items()] 
+            pos_scores_tuple_list = [(k, v) for k, v in pos_scores_dict.items()]
+            # pos_scores_tuple_list (itemID, score)
+            # user_train_pos_interactions ([itemIds])
+            if userId in self.data.train_set_user_pos_interactions:
+                user_train_pos_interactions = [itemId for (itemId, context) in self.data.train_set_user_pos_interactions[userId]]
+            else:
+                user_train_pos_interactions = []
+            pos_scores_tuple_list = [(itemId, -np.inf) if itemId in user_train_pos_interactions else (itemId, score) for (itemId, score) in pos_scores_tuple_list]
+
             scores[userId] = pos_scores_tuple_list
 
         ret = defaultdict(list)
