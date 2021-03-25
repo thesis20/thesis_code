@@ -27,7 +27,7 @@ def parse_args():
                         help='Keep probability w.r.t. node dropout (i.e., 1-dropout_ratio) for each deep layer. 1: no dropout.')
     parser.add_argument('--ks', nargs='?', default='[20, 50]',
                         help='Top k(s) to recommend')
-    parser.add_argument('--eval_interval', type=int, default=1000,
+    parser.add_argument('--eval_interval', type=int, default=250,
                         help='Interval between evaluations (epochs)')
     parser.add_argument('--initializer', nargs='?', default='normal',
                     help='Choose an initializer from {xavier, normal, glorot, glorot_normal}')
