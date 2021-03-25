@@ -204,8 +204,8 @@ class CSGCN():
         embs = tf.concat([self.weights['user_embedding'],
                           self.weights['item_embedding'],
                           self.weights['context_embedding'],
-                          self.weights['user_sideinfo_embeddings'],
-                          self.weights['item_sideinfo_embeddings']], axis=0)
+                          self.weights['user_sideinfo_embedding'],
+                          self.weights['item_sideinfo_embedding']], axis=0)
         all_embeddings = [embs]
 
         for k in range(0, self.n_layers):
@@ -297,8 +297,8 @@ class CSGCN():
         regularizer = tf.nn.l2_loss(self.u_g_embeddings_pre) + tf.nn.l2_loss(
             self.pos_i_g_embeddings_pre) + tf.nn.l2_loss(self.neg_i_g_embeddings_pre) \
                 + tf.nn.l2_loss(self.context_embeddings_pre) \
-                + tf.nn.l2_loss(self.user_sideinfo_embeddings) \
-                + tf.nn.l2_loss(self.item_sideinfo_embeddings)
+                + tf.nn.l2_loss(self.user_sideinfo_embeddings_pre) \
+                + tf.nn.l2_loss(self.item_sideinfo_embeddings_pre)
         regularizer = regularizer / self.batch_size
 
         mf_loss = tf.reduce_mean(tf.nn.softplus(-(pos_scores - neg_scores)))
