@@ -2,7 +2,7 @@ import argparse
 
 def parse_args():
     parser = argparse.ArgumentParser(description="CSGCN.")
-    parser.add_argument('--load', type=int, default=1,
+    parser.add_argument('--load', type=int, default=0,
                         help='1 = Load saved data. 0 = Save new data.')
     parser.add_argument('--seed', type=int, default=42069,
                         help='Seed for randoms.')
@@ -12,9 +12,10 @@ def parse_args():
                         help='Choose a dataset from {ml100k, ml1m, frappe}')
     parser.add_argument('--epoch', type=int, default=1000,
                         help='Number of epochs.')
-    parser.add_argument('--weight_size', nargs='?', default='[32, 32, 32, 32]',
+    # TODO: Refactor
+    parser.add_argument('--weight_size', nargs='?', default='[64, 64]',
                         help='Size of weights (amount of layers)')
-    parser.add_argument('--mess_dropout', nargs='?', default='[1.0, 1.0, 1.0, 1.0]',
+    parser.add_argument('--mess_dropout', nargs='?', default='[1.0, 1.0]',
                         help='Keep probability w.r.t. message dropout (i.e., 1-dropout_ratio) for each deep layer. 0: no dropout.')
     parser.add_argument('--batch', type=int, default=95,
                         help='Batch size.')

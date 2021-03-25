@@ -326,7 +326,7 @@ class LoadDataset():
     # TODO Husk at switche på den her
     def _create_full_adj_mat(self):
         print(" - Full adj matrix")
-        adj_mat_size = self.n_users + self.n_items + self.n_context + self.n_user_sideinfo + self.n_item_sideinfo
+        adj_mat_size = self.n_users + self.n_items + 2*self.n_context + self.n_user_sideinfo + self.n_item_sideinfo
 
         adj_mat = sparse.dok_matrix((adj_mat_size, adj_mat_size), dtype=np.float32)
 
@@ -345,28 +345,33 @@ class LoadDataset():
             for context_index in context_indexes:
                 context_offset = self.n_users + self.n_items + context_index
                 adj_mat[user_index, context_offset] = 1
-                adj_mat[item_offset, context_offset] = 1
+                adj_mat[context_offset, user_index] = 1
+                adj_mat[item_offset, context_offset + self.n_context] = 1
+                adj_mat[context_offset + self.n_context, item_offset] = 1
 
             for user_sideinfo in user_sideinfo_indexes:
-                user_sideinfo_offset = self.n_users + self.n_items + self.n_context + user_sideinfo
+                user_sideinfo_offset = self.n_users + self.n_items + 2*self.n_context + user_sideinfo
                 adj_mat[user_index, user_sideinfo_offset] = 1
+                adj_mat[user_sideinfo_offset, user_index] = 1
 
             for item_sideinfo in item_sideinfo_indexes:
-                item_sideinfo_offset = self.n_users + self.n_items + self.n_context + self.n_user_sideinfo + item_sideinfo
+                item_sideinfo_offset = self.n_users + self.n_items + 2*self.n_context + self.n_user_sideinfo + item_sideinfo
                 adj_mat[item_index, item_sideinfo_offset] = 1
+                adj_mat[item_sideinfo_offset, item_index] = 1
 
             adj_mat[user_index, item_offset] = 1
             adj_mat[item_offset, user_index] = 1
 
-            # Add 2I for context
-            for i in range(self.n_context):
-                offset = self.n_users + self.n_items
-                adj_mat[i + offset,i + offset] = 2
+        # # add I for sideinfo
+        # for i in range(self.n_user_sideinfo + self.n_item_sideinfo):
+        #     offset = self.n_users + self.n_items + self.n_context
+        #     adj_mat[i + offset,i + offset] = 1
 
-            # add I for sideinfo
-            for i in range(self.n_user_sideinfo + self.n_item_sideinfo):
-                offset = self.n_users + self.n_items + self.n_context
-                adj_mat[i + offset,i + offset] = 1
+        # # Add 2I for context
+        # for i in range(2 * self.n_context):
+        #     offset = self.n_users + self.n_items
+        #     adj_mat[i + offset,i + offset] = 1
+
 
         norm_adj_mat = self._normalize_adj_matrix(adj_mat)
 
@@ -450,6 +455,7 @@ class LoadDataset():
 
 
     def _normalize_adj_matrix(self, x):
+        print(" - Normalizing")
         diagonal_mat = sparse.dok_matrix(
             x.shape, dtype=np.float32)
         for i in range(x.shape[0]):
