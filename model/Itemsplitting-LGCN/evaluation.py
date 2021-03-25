@@ -69,8 +69,6 @@ class evaluator():
         for key, value in score_dict.items():
             results = sorted(value, key=lambda x: x[1], reverse=True)[:topk]
             sorted_scores[key] = [a_tuple[0] for a_tuple in results]
-            # sorted_scores[key] = np.argsort(score_dict[key][1])[::-1]
-            # sorted_scores[key] = sorted_scores[key][:topk]
 
         hrs, ndcgs, mrrs = [], [], []
         for key in sorted_scores.keys():

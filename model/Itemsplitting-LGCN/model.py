@@ -239,6 +239,8 @@ class ISLGCN():
                                                                                 })
                 train_writer.add_summary(summary_test_acc, epoch)
 
+    def evaluate_loo(self, epoch):
+        return NotImplementedError
     
     def evaluate(self, epoch):
         scores = dict()
