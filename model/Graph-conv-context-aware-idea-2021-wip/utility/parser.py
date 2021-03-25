@@ -13,9 +13,9 @@ def parse_args():
     parser.add_argument('--epoch', type=int, default=1000,
                         help='Number of epochs.')
     # TODO: Refactor
-    parser.add_argument('--weight_size', nargs='?', default='[64, 64]',
+    parser.add_argument('--weight_size', nargs='?', default='[64, 64, 64, 64]',
                         help='Size of weights (amount of layers)')
-    parser.add_argument('--mess_dropout', nargs='?', default='[1.0, 1.0]',
+    parser.add_argument('--mess_dropout', nargs='?', default='[1.0, 1.0, 1.0, 1.0]',
                         help='Keep probability w.r.t. message dropout (i.e., 1-dropout_ratio) for each deep layer. 0: no dropout.')
     parser.add_argument('--batch', type=int, default=95,
                         help='Batch size.')
