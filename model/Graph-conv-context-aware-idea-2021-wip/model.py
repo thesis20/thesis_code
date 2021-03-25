@@ -16,6 +16,7 @@ args = parse_args()
 
 class CSGCN():
     def __init__(self, sess, data):
+        self.use_full_adj = True
         self.random_seed = args.seed
         random.seed(self.random_seed)
         self.decay = args.decay
@@ -139,7 +140,14 @@ class CSGCN():
 
         self.weights = self._init_weights()
 
-        self.user_embs, self.item_embs, self.context_embs = self._csgcn_layers()
+        if self.use_full_adj:
+            self.user_embs, self.item_embs, self.context_embs, self.us_embs, self.is_embs = self._full_csgcn_layers()
+            self.user_sideinfo_embeddings = tf.nn.embedding_lookup(
+                self.us_embs, self.user_sideinfo)
+            self.item_sideinfo_embeddings = tf.nn.embedding_lookup(
+                self.is_embs, self.item_sideinfo)
+        else:
+            self.user_embs, self.item_embs, self.context_embs = self._csgcn_layers()
 
         # Learnable weights
         self.user_embeddings = tf.nn.embedding_lookup(
@@ -150,18 +158,19 @@ class CSGCN():
             self.item_embs, self.neg_interactions)
         self.context_embeddings = tf.nn.embedding_lookup(
             self.context_embs, self.context)
-        self.user_sideinfo_embeddings = tf.nn.embedding_lookup(
-            self.weights['user_sideinfo_embedding'], self.user_sideinfo)
-        self.item_sideinfo_embeddings = tf.nn.embedding_lookup(
-            self.weights['item_sideinfo_embedding'], self.item_sideinfo)
 
-        # Initial weights for BPR
+
+        # Initial weights for BPR regularizer
         self.u_g_embeddings_pre = tf.nn.embedding_lookup(
             self.weights['user_embedding'], self.users)
         self.pos_i_g_embeddings_pre = tf.nn.embedding_lookup(
             self.weights['item_embedding'], self.pos_interactions)
         self.neg_i_g_embeddings_pre = tf.nn.embedding_lookup(
             self.weights['item_embedding'], self.neg_interactions)
+        self.user_sideinfo_embeddings_pre = tf.nn.embedding_lookup(
+            self.weights['user_sideinfo_embedding'], self.user_sideinfo)
+        self.item_sideinfo_embeddings_pre = tf.nn.embedding_lookup(
+            self.weights['item_sideinfo_embedding'], self.item_sideinfo)
 
         # Biases
         self.user_bias = tf.nn.embedding_lookup(
@@ -185,6 +194,32 @@ class CSGCN():
         self.loss = self._bpr_loss(self.pos_scores, self.neg_scores)
         self.opt = self.optimizer.minimize(self.loss[0])
         self.init = tf.global_variables_initializer()
+
+    def _full_csgcn_layers(self):
+        adj_mat = self._convert_sp_mat_to_sp_tensor(self.data.norm_adj_mat)
+
+        embs = tf.concat([self.weights['user_embedding'],
+                          self.weights['item_embedding'],
+                          self.weights['context_embedding'],
+                          self.weights['user_sideinfo_embeddings'],
+                          self.weights['item_sideinfo_embeddings']], axis=0)
+        all_embeddings = [embs]
+
+        for k in range(0, self.n_layers):
+            side_embeddings = tf.sparse_tensor_dense_matmul(adj_mat, embs)
+            embs = side_embeddings
+
+            # Message dropout
+            ego_embeddings = tf.nn.dropout(embs, self.mess_dropout[k])
+            norm_embeddings = tf.nn.l2_normalize(ego_embeddings, axis=1)
+            all_embeddings += [norm_embeddings]
+
+        all_embeddings = tf.stack(all_embeddings, 1)
+        all_embeddings = tf.reduce_mean(all_embeddings, axis=1, keepdims=False)
+        ue, ie, ce, use, ise = tf.split(
+            all_embeddings, [self.data.n_users, self.data.n_items, self.data.n_context, self.data.n_user_sideinfo, self.data.n_item_sideinfo], 0)
+
+        return ue, ie, ce, use, ise
 
     def _csgcn_layers(self):
         uic_adj_mat = self._convert_sp_mat_to_sp_tensor(self.data.norm_adj_mat)
@@ -239,9 +274,11 @@ class CSGCN():
 
         user_emb_sq = tf.square(user_embs)
         item_emb_sq = tf.square(item_embs)
+        context_emb_sq = tf.square(context_embs)
         user_emb_sq_sum = tf.reduce_sum(user_emb_sq, 1)
         item_emb_sq_sum = tf.reduce_sum(item_emb_sq, 1)
-        second_term = tf.add(user_emb_sq_sum, item_emb_sq_sum)
+        context_emb_sq_sum = tf.reduce_sum(context_emb_sq, 1)
+        second_term = tf.add_n([user_emb_sq_sum, item_emb_sq_sum, context_emb_sq_sum])
 
         pred = 0.5 * tf.subtract(first_term, second_term)
 

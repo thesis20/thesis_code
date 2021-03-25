@@ -13,6 +13,9 @@ import math as m
 class LoadDataset():
     def __init__(self, random_seed, dataset='ml100k', eval_method='fold'):
 
+        # TODO: Tag som argument
+        self.use_full_adj_mat = True
+
         if dataset == 'ml100k':
             self.genrelist = ['unknown', 'action', 'adventure', 'animation',
                               'childrens', 'comedy', 'crime', 'documentary',
@@ -67,7 +70,11 @@ class LoadDataset():
         self.context_test_combinations = self.get_test_context_combinations()
         self.n_train_interactions = len(self.train_df.index)
         print("Creating adj matrices")
-        self.uic_adj_mat, self.us_adj_mat, self.is_adj_mat, self.norm_adj_mat, self.norm_us_adj_mat, self.norm_is_adj_mat = self._create_adj_mat()
+
+        if self.use_full_adj_mat:
+            self.adj_mat, self.norm_adj_mat = self._create_full_adj_mat()
+        else:
+            self.adj_mat, self.us_adj_mat, self.is_adj_mat, self.norm_adj_mat, self.norm_us_adj_mat, self.norm_is_adj_mat = self._create_adj_mat()
         print(f"n_users: {self.n_users}")
         print(f"n_items: {self.n_items}")
         print(f"n_user_sideinfo: {self.n_user_sideinfo}")
@@ -316,6 +323,55 @@ class LoadDataset():
         return {'user_ids': user_ids, 'pos_interactions': pos_interactions, 'neg_interactions': neg_interactions,
                 'contexts': contexts, 'user_sideinfo': user_sideinfo, 'item_sideinfo': item_sideinfo}
 
+    # TODO Husk at switche på den her
+    def _create_full_adj_mat(self):
+        print(" - Full adj matrix")
+        adj_mat_size = self.n_users + self.n_items + self.n_context + self.n_user_sideinfo + self.n_item_sideinfo
+
+        adj_mat = sparse.dok_matrix((adj_mat_size, adj_mat_size), dtype=np.float32)
+
+        for _, row in self.train_df.iterrows():
+            userId = row[self.userid_column_name]
+            itemId = row[self.itemid_column_name]
+            user_index = self.user_offset_dict[userId]
+            item_index = self.item_offset_dict[itemId]
+            user_sideinfo_indexes = self.user_sideinfo_dict[userId]
+            item_sideinfo_indexes = self.item_sideinfo_dict[itemId]
+            context_indexes = [self.context_offset_dict[column +
+                                            str(row[column])] for column in self.context_list]
+
+            item_offset = self.n_users + item_index
+
+            for context_index in context_indexes:
+                context_offset = self.n_users + self.n_items + context_index
+                adj_mat[user_index, context_offset] = 1
+                adj_mat[item_offset, context_offset] = 1
+
+            for user_sideinfo in user_sideinfo_indexes:
+                user_sideinfo_offset = self.n_users + self.n_items + self.n_context + user_sideinfo
+                adj_mat[user_index, user_sideinfo_offset] = 1
+
+            for item_sideinfo in item_sideinfo_indexes:
+                item_sideinfo_offset = self.n_users + self.n_items + self.n_context + self.n_user_sideinfo + item_sideinfo
+                adj_mat[item_index, item_sideinfo_offset] = 1
+
+            adj_mat[user_index, item_offset] = 1
+            adj_mat[item_offset, user_index] = 1
+
+            # Add 2I for context
+            for i in range(self.n_context):
+                offset = self.n_users + self.n_items
+                adj_mat[i + offset,i + offset] = 2
+
+            # add I for sideinfo
+            for i in range(self.n_user_sideinfo + self.n_item_sideinfo):
+                offset = self.n_users + self.n_items + self.n_context
+                adj_mat[i + offset,i + offset] = 1
+
+        norm_adj_mat = self._normalize_adj_matrix(adj_mat)
+
+        return adj_mat, norm_adj_mat
+
     def _create_adj_mat(self):
         print("  - Adj matrix")
         adj_mat_size = self.n_users + self.n_items + self.n_context
@@ -388,71 +444,15 @@ class LoadDataset():
         norm_is_adj_mat = self.normalize_sideinfo(item_sideinfo_adj_mat)
         
         print("  - Normalizing full adj")
-        # norm_adj_mat = self._normalize_adj_matrix(adj_mat)
-        norm_adj_mat = self.symmetric_normalize(adj_mat)
+        norm_adj_mat = self._normalize_adj_matrix(adj_mat)
 
         return adj_mat, user_sideinfo_adj_mat, item_sideinfo_adj_mat, norm_adj_mat, norm_us_adj_mat, norm_is_adj_mat
 
+
     def _normalize_adj_matrix(self, x):
-
-        matrix_copy = sparse.dok_matrix(x.shape, dtype=np.float32)
-
-        rows, cols, _ = sparse.find(x)
-
-        entries = list(zip(rows, cols))
-
-        ui_counter = dict()
-        iu_counter = dict()
-        #      U    I      C
-        # U  (1,1) (1,2) (1,3)
-        # I  (2,1) (2,2) (2,3)
-        # C  (3,1) (3,2) (3,3)
-        uc_counter = dict()
-        ic_counter = dict()
-
-        for row, col in entries:
-            if row < self.n_users:  # (1,1) (1,2) (1,3)
-                if col > self.n_users + self.n_items:  # (1,3)
-                    if row in uc_counter:
-                        uc_counter[row] += 1
-                    else:
-                        uc_counter[row] = 1
-                else:  # (1,2)
-                    if row in ui_counter:
-                        ui_counter[row] += 1
-                    else:
-                        ui_counter[row] = 1
-            else:
-                if col > self.n_users + self.n_items:  # (2,3)
-                    if row in ic_counter:
-                        ic_counter[row] += 1
-                    else:
-                        ic_counter[row] = 1
-                else:
-                    if row in iu_counter:
-                        iu_counter[row] += 1
-                    else:
-                        iu_counter[row] = 1
-
-        for row, col in entries:
-            if row < self.n_users:
-                if col > self.n_users + self.n_items:
-                    matrix_copy[row, col] = 1.0/uc_counter[row]  # (1,3)
-                else:
-                    matrix_copy[row, col] = 1.0/ui_counter[row]  # (1,2)
-            else:
-                if col > self.n_users + self.n_items:
-                    matrix_copy[row, col] = 1.0/ic_counter[row]  # (2,3)
-                else:
-                    matrix_copy[row, col] = 1.0/iu_counter[row]  # (2,1)
-
-        return matrix_copy
-    
-    def symmetric_normalize(self, x):
-        mat_size = self.n_users + self.n_items + self.n_context
         diagonal_mat = sparse.dok_matrix(
-            (mat_size, mat_size), dtype=np.float32)
-        for i in range(mat_size):
+            x.shape, dtype=np.float32)
+        for i in range(x.shape[0]):
             non_zero_count = x[i].count_nonzero()
             diagonal_mat[i,i] = non_zero_count
 
