@@ -112,7 +112,7 @@ class ISLGCN():
         return all_weights
     
     def _init_graph(self):
-        #tf.set_random_seed(self.random_seed)
+        tf.set_random_seed(self.random_seed)
         
         self.users = tf.placeholder(tf.int32, shape=[None,None])
         self.pos_interactions = tf.placeholder(tf.int32, shape=[None,None])
