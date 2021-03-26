@@ -318,7 +318,7 @@ class LoadDataset():
 
     def _create_adj_mat(self):
         print("  - Adj matrix")
-        adj_mat_size = self.n_users + self.n_items + self.n_context
+        adj_mat_size = self.n_users + self.n_items + self.n_context * 2
         adj_mat = sparse.dok_matrix(
             (adj_mat_size, adj_mat_size), dtype=np.float32)
 
@@ -341,7 +341,7 @@ class LoadDataset():
             for context_index in context_indexes:
                 context_offset = self.n_users + self.n_items + context_index
                 adj_mat[user_index, context_offset] = 1
-                adj_mat[item_offset, context_offset] = 1
+                adj_mat[item_offset, context_offset + self.n_context] = 1
 
             try:
                 adj_mat[user_index, item_offset] = 1  # R
@@ -352,9 +352,9 @@ class LoadDataset():
                 raise e
             
         #add 2 times identity matrix
-        for i in range(self.n_context):
+        for i in range(self.n_context*2):
             offset = self.n_users + self.n_items
-            adj_mat[i + offset,i + offset] = 2
+            adj_mat[i + offset,i + offset] = 1
 
             #   U  I  C
             # U 0  R  uc
@@ -449,10 +449,9 @@ class LoadDataset():
         return matrix_copy
     
     def symmetric_normalize(self, x):
-        mat_size = self.n_users + self.n_items + self.n_context
         diagonal_mat = sparse.dok_matrix(
-            (mat_size, mat_size), dtype=np.float32)
-        for i in range(mat_size):
+            x.shape, dtype=np.float32)
+        for i in range(x.shape[0]):
             non_zero_count = x[i].count_nonzero()
             diagonal_mat[i,i] = non_zero_count
 
