@@ -148,11 +148,11 @@ class CSGCN():
         self.weights = self._init_weights()
 
         if self.use_full_adj:
-            self.user_embs, self.item_embs, self.user_context_embs, self.item_context_embs, self.us_embs = self._full_csgcn_layers()
-            self.user_sideinfo_embeddings = tf.nn.embedding_lookup(
-                self.us_embs, self.user_sideinfo)
-            #self.item_sideinfo_embeddings = tf.nn.embedding_lookup(
-             #   self.is_embs, self.item_sideinfo)
+            self.user_embs, self.item_embs, self.user_context_embs, self.item_context_embs, self.is_embs = self._full_csgcn_layers()
+            #self.user_sideinfo_embeddings = tf.nn.embedding_lookup(
+            #    self.us_embs, self.user_sideinfo)
+            self.item_sideinfo_embeddings = tf.nn.embedding_lookup(
+                self.is_embs, self.item_sideinfo)
         else:
             self.user_embs, self.item_embs, self.context_embs = self._csgcn_layers()
 
@@ -215,8 +215,8 @@ class CSGCN():
                           self.weights['item_embedding'],
                           self.weights['user_context_embedding'],
                           self.weights['item_context_embedding'],
-                          self.weights['user_sideinfo_embedding']], axis= 0)
-                          #self.weights['item_sideinfo_embedding']], axis=0)
+                          #self.weights['user_sideinfo_embedding']], axis= 0)
+                          self.weights['item_sideinfo_embedding']], axis=0)
         all_embeddings = [embs]
 
         for k in range(0, self.n_layers):
@@ -230,10 +230,10 @@ class CSGCN():
 
         all_embeddings = tf.stack(all_embeddings, 1)
         all_embeddings = tf.reduce_mean(all_embeddings, axis=1, keepdims=False)
-        ue, ie, uce, ice, use = tf.split(
-            all_embeddings, [self.data.n_users, self.data.n_items, self.data.n_context, self.data.n_context, self.data.n_user_sideinfo], 0)
+        ue, ie, uce, ice, ise = tf.split(
+            all_embeddings, [self.data.n_users, self.data.n_items, self.data.n_context, self.data.n_context, self.data.n_item_sideinfo], 0)
 
-        return ue, ie, uce, ice, use
+        return ue, ie, uce, ice, ise
 
     def _csgcn_layers(self):
         uic_adj_mat = self._convert_sp_mat_to_sp_tensor(self.data.norm_adj_mat)

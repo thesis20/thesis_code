@@ -326,7 +326,7 @@ class LoadDataset():
     # TODO Husk at switche på den her
     def _create_full_adj_mat(self):
         print(" - Full adj matrix")
-        adj_mat_size = self.n_users + self.n_items + 2*self.n_context + self.n_user_sideinfo
+        adj_mat_size = self.n_users + self.n_items + 2*self.n_context + self.n_item_sideinfo
 
         adj_mat = sparse.dok_matrix((adj_mat_size, adj_mat_size), dtype=np.float32)
 
@@ -335,8 +335,8 @@ class LoadDataset():
             itemId = row[self.itemid_column_name]
             user_index = self.user_offset_dict[userId]
             item_index = self.item_offset_dict[itemId]
-            user_sideinfo_indexes = self.user_sideinfo_dict[userId]
-            #item_sideinfo_indexes = self.item_sideinfo_dict[itemId]
+           # user_sideinfo_indexes = self.user_sideinfo_dict[userId]
+            item_sideinfo_indexes = self.item_sideinfo_dict[itemId]
             context_indexes = [self.context_offset_dict[column +
                                             str(row[column])] for column in self.context_list]
 
@@ -349,15 +349,15 @@ class LoadDataset():
                 adj_mat[item_offset, context_offset + self.n_context] = 1
                 adj_mat[context_offset + self.n_context, item_offset] = 1
 
-            for user_sideinfo in user_sideinfo_indexes:
-                user_sideinfo_offset = self.n_users + self.n_items + 2*self.n_context + user_sideinfo
-                adj_mat[user_index, user_sideinfo_offset] = 1
-                adj_mat[user_sideinfo_offset, user_index] = 1
+            #for user_sideinfo in user_sideinfo_indexes:
+             #   user_sideinfo_offset = self.n_users + self.n_items + 2*self.n_context + user_sideinfo
+              #  adj_mat[user_index, user_sideinfo_offset] = 1
+               # adj_mat[user_sideinfo_offset, user_index] = 1
 
-            #for item_sideinfo in item_sideinfo_indexes:
-             #   item_sideinfo_offset = self.n_users + self.n_items + 2*self.n_context + self.n_user_sideinfo + item_sideinfo
-              #  adj_mat[item_index, item_sideinfo_offset] = 1
-               # adj_mat[item_sideinfo_offset, item_index] = 1
+            for item_sideinfo in item_sideinfo_indexes:
+                item_sideinfo_offset = self.n_users + self.n_items + 2*self.n_context + item_sideinfo
+                adj_mat[item_index, item_sideinfo_offset] = 1
+                adj_mat[item_sideinfo_offset, item_index] = 1
 
             adj_mat[user_index, item_offset] = 1
             adj_mat[item_offset, user_index] = 1
