@@ -37,7 +37,6 @@ for key, value in tqdm(categories_dict.items()):
 
 df.drop('categories', inplace=True, axis=1)
 
-print(len(categories_dict))
 
 train, test = train_test_split(df, test_size=0.2, random_state=seed)
 
