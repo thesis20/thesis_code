@@ -35,9 +35,7 @@ for index, row in tqdm(df.iterrows(), total=df.shape[0]):
 for key, value in tqdm(categories_dict.items()):
     df[key] = value
 
-#print(df.head())
 df.drop('categories', inplace=True, axis=1)
-#print(categories_dict)
 
 print(len(categories_dict))
 
