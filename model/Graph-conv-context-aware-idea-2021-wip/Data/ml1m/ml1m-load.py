@@ -21,18 +21,6 @@ def convert_datetime_to_timeofday(datetime):
         return 5
 
 
-
-zipcode_ints = dict()
-for value, key in enumerate(user['zipcode'].unique()):
-    zipcode_ints[key] = value
-
-def convert_zipcode_to_int(zipcode):
-    # convert the datetime to different timeofday intervals
-    return zipcode_ints[zipcode]
-
-# convert zipcode to int
-user['zipcode'] = user['zipcode'].apply(lambda x: convert_zipcode_to_int(x))
-
 # convert timestamp to a datetime
 ratings['datetime'] = ratings['timestamp'].apply(lambda x: datetime.datetime.fromtimestamp(x))
 # Convert datetimes to weekday integer
@@ -77,6 +65,35 @@ column_names = ['userId', 'age', 'gender', 'occupation', 'zipcode', 'movieId',
           'Horror','Musical','Mystery','Romance','Sci-Fi','Thriller','War','Western', 'weekday', 'timeofday', 'timestamp']
 
 joined = joined.reindex(columns=column_names)
+
+
+zipcode_ints = dict()
+for value, key in enumerate(joined['zipcode'].unique()):
+    zipcode_ints[key] = value
+
+def convert_zipcode_to_int(zipcode):
+    return zipcode_ints[zipcode]
+
+
+userId_ints = dict()
+for value, key in enumerate(joined['userId'].unique()):
+    userId_ints[key] = value
+
+def convert_userid_to_int(userid):
+    return userId_ints[userid]
+
+
+movie_id_ints = dict()
+for value, key in enumerate(joined['movieId'].unique()):
+    movie_id_ints[key] = value
+
+def convert_movieid_to_int(movieid):
+    return movie_id_ints[movieid]
+
+
+joined['zipcode'] = joined['zipcode'].apply(lambda x: convert_zipcode_to_int(x))
+joined['userId'] = joined['userId'].apply(lambda x: convert_userid_to_int(x))
+joined['movieId'] = joined['movieId'].apply(lambda x: convert_movieid_to_int(x))
 
 print(joined.head())
 
