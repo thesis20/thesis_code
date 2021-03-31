@@ -262,15 +262,18 @@ class LoadDataset():
             train_set_user_neg_interactions[key] = list(
                 set(unique_train_items).difference(value[0]))
 
-        # TODO Fjern padding
-        # longest_genre_list = len(item_sideinfo_dict[max(
-        #     item_sideinfo_dict, key=lambda x: len(item_sideinfo_dict[x]))])
-        # for key, value in item_sideinfo_dict.items():
-        #     item_sideinfo_dict[key] = (
-        #         value + longest_genre_list * [0])[:longest_genre_list]
-
+        # 0 padding
+        item_sideinfo_padding = dict()
+        longest_genre_list = len(item_sideinfo_dict[max(
+            item_sideinfo_dict, key=lambda x: len(item_sideinfo_dict[x]))])
+        for key, value in item_sideinfo_dict.items():
+            item_sideinfo_dict[key] = (
+                value + longest_genre_list * [0])[:longest_genre_list]
+            item_sideinfo_padding[key] = longest_genre_list - len(value)
+        
         self.user_sideinfo_dict = user_sideinfo_dict
         self.item_sideinfo_dict = item_sideinfo_dict
+        self.item_sideinfo_padding = item_sideinfo_padding
         # dict with key --> (test userId), value --> (ground truth interactions)
         self.user_ground_truth_dict = user_ground_truth_dict
         # dict with key --> (train userId), value --> (list of positive interaction Ids)
@@ -284,7 +287,7 @@ class LoadDataset():
         # Repeat for size of batch
 
         user_ids, pos_interactions, neg_interactions = [], [], []
-        contexts, user_sideinfo, item_sideinfo = [], [], []
+        contexts, user_sideinfo, item_sideinfo, item_sideinfo_padding= [], [], [], []
 
         random_userIds = random.choices(
             list(self.train_set_user_pos_interactions.keys()), k=batch_size)
@@ -306,15 +309,16 @@ class LoadDataset():
             contexts.append(user_contexts)
             user_sideinfo.append(self.user_sideinfo_dict[userId])
             
-            sideinfo = self.item_sideinfo_dict[pos[0]]
-            # TODO if the item has more than one genre, choose a random one
-            if 'genre' in self.item_sideinfo_columns:
-                if len(sideinfo) > 1:
-                    sideinfo = [random.choice(sideinfo)]
-            item_sideinfo.append(sideinfo)
+            # # TODO if the item has more than one genre, choose a random one
+            # if 'genre' in self.item_sideinfo_columns:
+            #     if len(sideinfo) > 1:
+            #         sideinfo = [random.choice(sideinfo)]
+            item_sideinfo_padding.append([self.item_sideinfo_padding[pos[0]]])
+            item_sideinfo.append(self.item_sideinfo_dict[pos[0]])
 
         return {'user_ids': user_ids, 'pos_interactions': pos_interactions, 'neg_interactions': neg_interactions,
-                'contexts': contexts, 'user_sideinfo': user_sideinfo, 'item_sideinfo': item_sideinfo}
+                'contexts': contexts, 'user_sideinfo': user_sideinfo, 'item_sideinfo': item_sideinfo,
+                'item_sideinfo_padding': item_sideinfo_padding}
 
     def _create_adj_mat(self):
         print("  - Adj matrix")
