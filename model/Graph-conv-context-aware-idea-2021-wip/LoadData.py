@@ -309,10 +309,6 @@ class LoadDataset():
             contexts.append(user_contexts)
             user_sideinfo.append(self.user_sideinfo_dict[userId])
             
-            # # TODO if the item has more than one genre, choose a random one
-            # if 'genre' in self.item_sideinfo_columns:
-            #     if len(sideinfo) > 1:
-            #         sideinfo = [random.choice(sideinfo)]
             item_sideinfo_padding.append([self.item_sideinfo_padding[pos[0]]])
             item_sideinfo.append(self.item_sideinfo_dict[pos[0]])
 

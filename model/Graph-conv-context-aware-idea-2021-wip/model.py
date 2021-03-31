@@ -425,11 +425,6 @@ class CSGCN():
                 item_sideinfo = self.data.item_sideinfo_dict[item]
                 item_sideinfo_padding = self.data.item_sideinfo_padding[item]
 
-                # TODO Fix this
-                # if 'genre' in self.data.item_sideinfo_columns:
-                #     if len(item_sideinfo) > 1:
-                #         item_sideinfo = [random.choice(item_sideinfo)]
-
                 for context_comb in self.data.context_test_combinations:
                     user_indexes.append([user_index])
                     user_sideinfos.append(user_sideinfo)
