@@ -129,6 +129,12 @@ class CSGCN():
 
         return all_weights
 
+    def remove_padding_reduce_mean(self, sideinfo, padding):
+        size_split = tf.concat([tf.subtract(tf.shape(sideinfo)[0], padding), padding], axis=0)
+        sideinfo_no_pad = tf.split(sideinfo, size_split, axis=0)[0]
+        reduction = tf.reduce_mean(sideinfo_no_pad, axis=0)
+        return reduction
+
     def _init_graph(self):
         tf.set_random_seed(self.random_seed)
         self.mess_drop_prob = tf.placeholder_with_default([1.] * self.n_layers, shape=[None])
@@ -140,7 +146,7 @@ class CSGCN():
         self.context = tf.placeholder(tf.int32, shape=[None, None])
         self.user_sideinfo = tf.placeholder(tf.int32, shape=[None, None])
         self.item_sideinfo = tf.placeholder(tf.int32, shape=[None, None])
-
+        self.item_sideinfo_padding = tf.placeholder(tf.int32, shape=[None, 1])
         self.weights = self._init_weights()
 
         self.user_embs, self.item_embs, self.context_embs = self._csgcn_layers()
@@ -158,6 +164,11 @@ class CSGCN():
             self.weights['user_sideinfo_embedding'], self.user_sideinfo)
         self.item_sideinfo_embeddings = tf.nn.embedding_lookup(
             self.weights['item_sideinfo_embedding'], self.item_sideinfo)
+        
+        
+        # removes embeddings that were padded as 0's and uses reduce_mean on the remaining multihot sideinfo embeddings such as genre
+        self.item_sideinfo_embeddings_padding_removed = tf.map_fn(lambda inp: self.remove_padding_reduce_mean(inp[0], inp[1]), 
+                                         (self.item_sideinfo_embeddings, self.item_sideinfo_padding), dtype=(tf.float32))
 
         # Initial weights for BPR
         self.u_g_embeddings_pre = tf.nn.embedding_lookup(
@@ -263,7 +274,7 @@ class CSGCN():
             self.pos_i_g_embeddings_pre) + tf.nn.l2_loss(self.neg_i_g_embeddings_pre) \
                 + tf.nn.l2_loss(self.context_embeddings_pre) \
                 + tf.nn.l2_loss(self.user_sideinfo_embeddings) \
-                + tf.nn.l2_loss(self.item_sideinfo_embeddings)
+                + tf.nn.l2_loss(self.item_sideinfo_embeddings_padding_removed)
         regularizer = regularizer / self.batch_size
 
         mf_loss = tf.reduce_mean(tf.nn.softplus(-(pos_scores - neg_scores)))
@@ -281,6 +292,7 @@ class CSGCN():
         feed_dict = {self.users: data['user_ids'], self.pos_interactions: data['pos_interactions'],
                      self.neg_interactions: data['neg_interactions'], self.context: data['contexts'],
                      self.user_sideinfo: data['user_sideinfo'], self.item_sideinfo: data['item_sideinfo'],
+                     self.item_sideinfo_padding: data['item_sideinfo_padding'],
                      self.mess_drop_prob: self.mess_dropout,
                      self.node_drop_prob: self.node_dropout}
         return self.sess.run([self.loss, self.opt], feed_dict=feed_dict)
@@ -406,26 +418,25 @@ class CSGCN():
             user_sideinfos = []
             item_indexes = []
             item_sideinfos = []
+            item_sideinfos_padding = []
             contexts = []
             for item in self.data.full_df[self.data.itemid_column_name].unique():
                 item_index = self.data.item_offset_dict[item]
                 item_sideinfo = self.data.item_sideinfo_dict[item]
-
-                # TODO Fix this
-                if 'genre' in self.data.item_sideinfo_columns:
-                    if len(item_sideinfo) > 1:
-                        item_sideinfo = [random.choice(item_sideinfo)]
+                item_sideinfo_padding = self.data.item_sideinfo_padding[item]
 
                 for context_comb in self.data.context_test_combinations:
                     user_indexes.append([user_index])
                     user_sideinfos.append(user_sideinfo)
                     item_indexes.append([item_index])
                     item_sideinfos.append(item_sideinfo)
+                    item_sideinfos_padding.append([item_sideinfo_padding])
                     contexts.append(list(context_comb))
 
             feed_dict = {self.users: user_indexes, self.pos_interactions: item_indexes,
                             self.context: contexts, self.user_sideinfo: user_sideinfos,
-                            self.item_sideinfo: item_sideinfos}
+                            self.item_sideinfo: item_sideinfos,
+                            self.item_sideinfo_padding: item_sideinfos_padding}
             pos_scores = self.sess.run(self.pos_scores, feed_dict=feed_dict)
             pos_scores = np.sum(pos_scores, axis=1)
             item_ids = [self.data.item_offset_to_id_dict[x[0]] for x in item_indexes]
