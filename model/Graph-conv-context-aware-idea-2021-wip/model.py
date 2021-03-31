@@ -131,8 +131,8 @@ class CSGCN():
 
     def remove_padding_reduce_mean(self, sideinfo, padding):
         size_split = tf.concat([tf.subtract(tf.shape(sideinfo)[0], padding), padding], axis=0)
-        a = tf.split(sideinfo, size_split, axis=0)[0]
-        reduction = tf.reduce_mean(a, axis=0)
+        sideinfo_no_pad = tf.split(sideinfo, size_split, axis=0)[0]
+        reduction = tf.reduce_mean(sideinfo_no_pad, axis=0)
         return reduction
 
     def _init_graph(self):
