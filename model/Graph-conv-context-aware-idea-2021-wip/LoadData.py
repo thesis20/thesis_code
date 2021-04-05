@@ -45,6 +45,46 @@ class LoadDataset():
             self.userid_column_name = 'user'
             self.itemid_column_name = 'item'
             self.path = 'Data/Frappe/'
+        elif dataset == 'yelpnc':
+            self.genrelist = ['Shopping','LocalServices','Fashion','Sandwiches','Food','Bagels',
+                              'Restaurants','Burgers','ChickenWings','Bars','Nightlife','SportsBars',
+                              'American(Traditional)','Steakhouses','Tapas/SmallPlates','Breakfast&Brunch',
+                              'American(New)','Pubs','CocktailBars','TapasBars','Gastropubs','Coffee&Tea',
+                              'BeerBar','Breweries','Bakeries','Southern','SoulFood','Delis','SpecialtyFood',
+                              'WineBars','EventPlanning&Services','Caterers','Cafes','Arts&Entertainment',
+                              'MusicVenues','Pizza','Italian','IceCream&FrozenYogurt','FastFood','Chinese',
+                              'SushiBars','Thai','AsianFusion','Japanese','Venues&EventSpaces','Mexican',
+                              'Vietnamese','Hotels&Travel','Automotive','Diners','ComfortFood','Salad',
+                              'LocalFlavor','Seafood','NailSalons','HairRemoval','Beauty&Spas','French',
+                              'Beer','Wine&Spirits','Barbeque','Soup','Tex-Mex','DepartmentStores','Lounges',
+                              'Vegetarian','ActiveLife','Desserts','LatinAmerican','Vegan','Gluten-Free',
+                              'Greek','Home&Garden','Health&Medical','Mediterranean','JuiceBars&Smoothies',
+                              'Grocery','Noodles','Indian','EthnicFood','Flowers&Gifts']
+            self.item_sideinfo_columns = ['genre']
+            self.user_sideinfo_columns = ['yelping_since', 'fans', 'average_stars']
+            self.context_list = ['date']
+            self.userid_column_name = 'user_id'  # done
+            self.itemid_column_name = 'business_id'  # done
+            self.path = 'Data/yelpnc/'  # done
+        elif dataset == 'yelpon':
+            self.genrelist = ['SpecialtyFood','Restaurants','EthnicFood','Chinese','Caterers','Food',
+                              'EventPlanning&Services','Hotels&Travel','Venues&EventSpaces','Nightlife',
+                              'Steakhouses','Bars','Seafood','SportsBars','Canadian(New)','American(Traditional)',
+                              'Burgers','Italian','CocktailBars','Mediterranean','Gastropubs','Arts&Entertainment',
+                              'Mexican','Barbeque','ComfortFood','Thai','AsianFusion','Pakistani','Buffets',
+                              'American(New)','Beauty&Spas','Grocery','Coffee&Tea','FastFood','Pizza','Salad',
+                              'SushiBars','Bakeries','French','Breakfast&Brunch','Korean','IceCream&FrozenYogurt',
+                              'Noodles','Desserts','Cafes','Diners','Soup','Sandwiches','Ramen','Japanese','Pubs',
+                              'Vietnamese','Shopping','MiddleEastern','Halal','Taiwanese','Vegan','TeaRooms','Vegetarian',
+                              'DimSum','WineBars','JuiceBars&Smoothies','Fashion','Caribbean','Beer','Wine&Spirits',
+                              'ChickenWings','Lounges','TapasBars','Tapas/SmallPlates','Indian',
+                              'BubbleTea','ActiveLife','Greek','Gluten-Free']
+            self.item_sideinfo_columns = ['genre']
+            self.user_sideinfo_columns = ['yelping_since', 'fans', 'average_stars']
+            self.context_list = ['date']
+            self.userid_column_name = 'user_id'  # done
+            self.itemid_column_name = 'business_id'  # done
+            self.path = 'Data/yelpon/'  # done
         else:
             print("No dataset defined")
             exit()
@@ -202,9 +242,12 @@ class LoadDataset():
 
                 if 'genre' in self.item_sideinfo_columns:
                     for column in self.genrelist:
-                        if row[column] == 1:
-                            item_sideinfo_indexes.append(
-                                self.item_sideinfo_offset_dict[column + str(1)])
+                        try:
+                            if row[column] == 1:
+                                item_sideinfo_indexes.append(
+                                    self.item_sideinfo_offset_dict[column + str(1)])
+                        except Exception as e:
+                            print(e)
                     item_sideinfo_dict[row[self.itemid_column_name]
                                     ] = item_sideinfo_indexes
 

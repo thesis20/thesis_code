@@ -28,7 +28,7 @@ class CSGCN():
         self.node_dropout = args.keep_prob
         self.emb_dim = args.embed_size
         self.epochs = args.epoch
-        self.batch_size = args.batch
+        self.batch_size = int(self.data.n_users // 10)
         self.learning_rate = args.lr
         self.initializer = self._set_initializer(args.initializer)
         self.optimizer = self._set_optimizer(args.optimizer)
@@ -274,7 +274,7 @@ class CSGCN():
             self.pos_i_g_embeddings_pre) + tf.nn.l2_loss(self.neg_i_g_embeddings_pre) \
                 + tf.nn.l2_loss(self.context_embeddings_pre) \
                 + tf.nn.l2_loss(self.user_sideinfo_embeddings) \
-                + tf.nn.l2_loss(self.item_sideinfo_embeddings_padding_removed)
+                + tf.nn.l2_loss(self.item_sideinfo_embeddings)
         regularizer = regularizer / self.batch_size
 
         mf_loss = tf.reduce_mean(tf.nn.softplus(-(pos_scores - neg_scores)))
