@@ -290,7 +290,7 @@ class CSGCN():
         user_emb_sq = tf.square(user_embs)
         item_emb_sq = tf.square(item_embs)
         user_context_emb_sq = tf.square(user_context_embs)
-        item_context_emb_sq = tf.square(user_context_embs)
+        item_context_emb_sq = tf.square(item_context_embs)
         user_emb_sq_sum = tf.reduce_sum(user_emb_sq, 1)
         item_emb_sq_sum = tf.reduce_sum(item_emb_sq, 1)
         user_context_emb_sq_sum = tf.reduce_sum(user_context_emb_sq, 1)
