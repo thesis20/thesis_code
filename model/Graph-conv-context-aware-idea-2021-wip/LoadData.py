@@ -13,6 +13,9 @@ import math as m
 class LoadDataset():
     def __init__(self, random_seed, dataset='ml100k', eval_method='fold'):
 
+        # TODO: Tag som argument
+        self.use_full_adj_mat = True
+
         if dataset == 'ml100k':
             self.genrelist = ['unknown', 'action', 'adventure', 'animation',
                               'childrens', 'comedy', 'crime', 'documentary',
@@ -45,6 +48,46 @@ class LoadDataset():
             self.userid_column_name = 'user'
             self.itemid_column_name = 'item'
             self.path = 'Data/Frappe/'
+        elif dataset == 'yelpnc':
+            self.genrelist = ['Shopping','LocalServices','Fashion','Sandwiches','Food','Bagels',
+                              'Restaurants','Burgers','ChickenWings','Bars','Nightlife','SportsBars',
+                              'American(Traditional)','Steakhouses','Tapas/SmallPlates','Breakfast&Brunch',
+                              'American(New)','Pubs','CocktailBars','TapasBars','Gastropubs','Coffee&Tea',
+                              'BeerBar','Breweries','Bakeries','Southern','SoulFood','Delis','SpecialtyFood',
+                              'WineBars','EventPlanning&Services','Caterers','Cafes','Arts&Entertainment',
+                              'MusicVenues','Pizza','Italian','IceCream&FrozenYogurt','FastFood','Chinese',
+                              'SushiBars','Thai','AsianFusion','Japanese','Venues&EventSpaces','Mexican',
+                              'Vietnamese','Hotels&Travel','Automotive','Diners','ComfortFood','Salad',
+                              'LocalFlavor','Seafood','NailSalons','HairRemoval','Beauty&Spas','French',
+                              'Beer','Wine&Spirits','Barbeque','Soup','Tex-Mex','DepartmentStores','Lounges',
+                              'Vegetarian','ActiveLife','Desserts','LatinAmerican','Vegan','Gluten-Free',
+                              'Greek','Home&Garden','Health&Medical','Mediterranean','JuiceBars&Smoothies',
+                              'Grocery','Noodles','Indian','EthnicFood','Flowers&Gifts']
+            self.item_sideinfo_columns = ['genre']
+            self.user_sideinfo_columns = ['yelping_since', 'fans', 'average_stars']
+            self.context_list = ['date']
+            self.userid_column_name = 'user_id'  # done
+            self.itemid_column_name = 'business_id'  # done
+            self.path = 'Data/yelpnc/'  # done
+        elif dataset == 'yelpon':
+            self.genrelist = ['SpecialtyFood','Restaurants','EthnicFood','Chinese','Caterers','Food',
+                              'EventPlanning&Services','Hotels&Travel','Venues&EventSpaces','Nightlife',
+                              'Steakhouses','Bars','Seafood','SportsBars','Canadian(New)','American(Traditional)',
+                              'Burgers','Italian','CocktailBars','Mediterranean','Gastropubs','Arts&Entertainment',
+                              'Mexican','Barbeque','ComfortFood','Thai','AsianFusion','Pakistani','Buffets',
+                              'American(New)','Beauty&Spas','Grocery','Coffee&Tea','FastFood','Pizza','Salad',
+                              'SushiBars','Bakeries','French','Breakfast&Brunch','Korean','IceCream&FrozenYogurt',
+                              'Noodles','Desserts','Cafes','Diners','Soup','Sandwiches','Ramen','Japanese','Pubs',
+                              'Vietnamese','Shopping','MiddleEastern','Halal','Taiwanese','Vegan','TeaRooms','Vegetarian',
+                              'DimSum','WineBars','JuiceBars&Smoothies','Fashion','Caribbean','Beer','Wine&Spirits',
+                              'ChickenWings','Lounges','TapasBars','Tapas/SmallPlates','Indian',
+                              'BubbleTea','ActiveLife','Greek','Gluten-Free']
+            self.item_sideinfo_columns = ['genre']
+            self.user_sideinfo_columns = ['yelping_since', 'fans', 'average_stars']
+            self.context_list = ['date']
+            self.userid_column_name = 'user_id'  # done
+            self.itemid_column_name = 'business_id'  # done
+            self.path = 'Data/yelpnc/'  # done
         else:
             print("No dataset defined")
             exit()
@@ -61,18 +104,24 @@ class LoadDataset():
         print("Building dictionaries")
         self.build_dictionaries()
         self.n_train_users, self.n_test_users, self.n_users = self.user_counter()
+        self.batch_size = int(self.n_users // 10)
         self.n_train_items, self.n_test_items, self.n_items = self.item_counter()
         self.n_user_sideinfo, self.n_item_sideinfo = self.sideinfo_counter()
         self.n_context = self.context_counter()
         self.context_test_combinations = self.get_test_context_combinations()
         self.n_train_interactions = len(self.train_df.index)
         print("Creating adj matrices")
-        self.uic_adj_mat, self.us_adj_mat, self.is_adj_mat, self.norm_adj_mat, self.norm_us_adj_mat, self.norm_is_adj_mat = self._create_adj_mat()
+
+        if self.use_full_adj_mat:
+            self.adj_mat, self.norm_adj_mat = self._create_full_adj_mat()
+        else:
+            self.adj_mat, self.us_adj_mat, self.is_adj_mat, self.norm_adj_mat, self.norm_us_adj_mat, self.norm_is_adj_mat = self._create_adj_mat()
         print(f"n_users: {self.n_users}")
         print(f"n_items: {self.n_items}")
         print(f"n_user_sideinfo: {self.n_user_sideinfo}")
         print(f"n_item_sideinfo: {self.n_item_sideinfo}")
         print(f"n_context: {self.n_context}")
+        print(f"batch_size: {self.batch_size}")
         print("-------- LEARNING TIME --------")
 
     def user_counter(self):
@@ -106,7 +155,7 @@ class LoadDataset():
 
     def load_data(self):
         self.full_df = pd.read_csv(self.full_file, sep=',')
-        
+
         if self.eval_method == 'loo':
             indices = self.full_df.index
             test_indices = []
@@ -189,12 +238,10 @@ class LoadDataset():
                 for column in self.user_sideinfo_columns:
                     user_sideinfo_indexes.append(
                         self.user_sideinfo_offset_dict[column + str(row[column])])
-                user_sideinfo_dict[row[self.userid_column_name]
-                                   ] = user_sideinfo_indexes
+                user_sideinfo_dict[row[self.userid_column_name]] = user_sideinfo_indexes
             else:
                 if row[self.itemid_column_name] not in user_ground_truth_dict[row[self.userid_column_name]]:
-                    user_ground_truth_dict[row[self.userid_column_name]].append(
-                        row[self.itemid_column_name])
+                    user_ground_truth_dict[row[self.userid_column_name]].append(row[self.itemid_column_name])
 
             if row[self.itemid_column_name] not in item_sideinfo_dict:
                 # If movie has not been observed yet, save sideinfo
@@ -316,6 +363,56 @@ class LoadDataset():
                 'contexts': contexts, 'user_sideinfo': user_sideinfo, 'item_sideinfo': item_sideinfo,
                 'item_sideinfo_padding': item_sideinfo_padding}
 
+    # TODO Husk at switche på den her
+    def _create_full_adj_mat(self):
+        print(" - Full adj matrix")
+        adj_mat_size = self.n_users + self.n_items + 2*self.n_context + self.n_user_sideinfo + self.n_item_sideinfo
+
+        adj_mat = sparse.dok_matrix((adj_mat_size, adj_mat_size), dtype=np.float32)
+
+        for _, row in self.train_df.iterrows():
+            userId = row[self.userid_column_name]
+            itemId = row[self.itemid_column_name]
+            user_index = self.user_offset_dict[userId]
+            item_index = self.item_offset_dict[itemId]
+            user_sideinfo_indexes = self.user_sideinfo_dict[userId]
+            item_sideinfo_indexes = self.item_sideinfo_dict[itemId]
+            context_indexes = [self.context_offset_dict[column +
+                                            str(row[column])] for column in self.context_list]
+
+            item_offset = self.n_users + item_index
+
+            for context_index in context_indexes:
+                context_offset = self.n_users + self.n_items + context_index
+                adj_mat[user_index, context_offset] = 1 # UC
+                adj_mat[item_offset, context_offset + self.n_context] = 1 # IC
+
+            for user_sideinfo in user_sideinfo_indexes:
+                user_sideinfo_offset = self.n_users + self.n_items + 2*self.n_context + user_sideinfo
+                adj_mat[user_index, user_sideinfo_offset] = 1 # IS
+
+            for item_sideinfo in item_sideinfo_indexes:
+                item_sideinfo_offset = self.n_users + self.n_items + 2*self.n_context + self.n_user_sideinfo + item_sideinfo
+                adj_mat[item_index, item_sideinfo_offset] = 1 # US
+
+            adj_mat[user_index, item_offset] = 1 # UI
+            adj_mat[item_offset, user_index] = 1 # UIT
+
+        # add I for sideinfo
+        for i in range(self.n_user_sideinfo + self.n_item_sideinfo):
+            offset = self.n_users + self.n_items + self.n_context
+            adj_mat[i + offset,i + offset] = 1
+
+        # Add 2I for context
+        for i in range(2 * self.n_context):
+            offset = self.n_users + self.n_items
+            adj_mat[i + offset,i + offset] = 1
+
+
+        norm_adj_mat = self._normalize_adj_matrix(adj_mat)
+
+        return adj_mat, norm_adj_mat
+
     def _create_adj_mat(self):
         print("  - Adj matrix")
         adj_mat_size = self.n_users + self.n_items + self.n_context
@@ -350,7 +447,7 @@ class LoadDataset():
                 print(
                     f'user: {user_index}, item_index: {item_index}, item_offset: {item_offset}, user_offset: {user_offset}')
                 raise e
-            
+
         #add 2 times identity matrix
         for i in range(self.n_context):
             offset = self.n_users + self.n_items
@@ -383,76 +480,21 @@ class LoadDataset():
 
         print("  - Normalizing user sideinfo adj")
         norm_us_adj_mat = self.normalize_sideinfo(user_sideinfo_adj_mat)
-        
+
         print("  - Normalizing item sideinfo adj")
         norm_is_adj_mat = self.normalize_sideinfo(item_sideinfo_adj_mat)
-        
+
         print("  - Normalizing full adj")
-        # norm_adj_mat = self._normalize_adj_matrix(adj_mat)
-        norm_adj_mat = self.symmetric_normalize(adj_mat)
+        norm_adj_mat = self._normalize_adj_matrix(adj_mat)
 
         return adj_mat, user_sideinfo_adj_mat, item_sideinfo_adj_mat, norm_adj_mat, norm_us_adj_mat, norm_is_adj_mat
 
+
     def _normalize_adj_matrix(self, x):
-
-        matrix_copy = sparse.dok_matrix(x.shape, dtype=np.float32)
-
-        rows, cols, _ = sparse.find(x)
-
-        entries = list(zip(rows, cols))
-
-        ui_counter = dict()
-        iu_counter = dict()
-        #      U    I      C
-        # U  (1,1) (1,2) (1,3)
-        # I  (2,1) (2,2) (2,3)
-        # C  (3,1) (3,2) (3,3)
-        uc_counter = dict()
-        ic_counter = dict()
-
-        for row, col in entries:
-            if row < self.n_users:  # (1,1) (1,2) (1,3)
-                if col > self.n_users + self.n_items:  # (1,3)
-                    if row in uc_counter:
-                        uc_counter[row] += 1
-                    else:
-                        uc_counter[row] = 1
-                else:  # (1,2)
-                    if row in ui_counter:
-                        ui_counter[row] += 1
-                    else:
-                        ui_counter[row] = 1
-            else:
-                if col > self.n_users + self.n_items:  # (2,3)
-                    if row in ic_counter:
-                        ic_counter[row] += 1
-                    else:
-                        ic_counter[row] = 1
-                else:
-                    if row in iu_counter:
-                        iu_counter[row] += 1
-                    else:
-                        iu_counter[row] = 1
-
-        for row, col in entries:
-            if row < self.n_users:
-                if col > self.n_users + self.n_items:
-                    matrix_copy[row, col] = 1.0/uc_counter[row]  # (1,3)
-                else:
-                    matrix_copy[row, col] = 1.0/ui_counter[row]  # (1,2)
-            else:
-                if col > self.n_users + self.n_items:
-                    matrix_copy[row, col] = 1.0/ic_counter[row]  # (2,3)
-                else:
-                    matrix_copy[row, col] = 1.0/iu_counter[row]  # (2,1)
-
-        return matrix_copy
-    
-    def symmetric_normalize(self, x):
-        mat_size = self.n_users + self.n_items + self.n_context
+        print(" - Normalizing")
         diagonal_mat = sparse.dok_matrix(
-            (mat_size, mat_size), dtype=np.float32)
-        for i in range(mat_size):
+            x.shape, dtype=np.float32)
+        for i in range(x.shape[0]):
             non_zero_count = x[i].count_nonzero()
             diagonal_mat[i,i] = non_zero_count
 
@@ -460,9 +502,9 @@ class LoadDataset():
         #sqrt(2)*D^-(1/2)*A
         frac_mul_adj_mat = frac_diagonal_mat.dot(x)
         result = m.sqrt(2)*frac_mul_adj_mat
-            
+
         return result
-        
+
 
     def normalize_sideinfo(self, x):
         matrix_copy = sparse.dok_matrix(x.shape, dtype=np.float32)
@@ -487,7 +529,7 @@ class LoadDataset():
     def get_test_context_combinations(self):
         # get the unique context combinations in the test set
         combinations = set()
-        
+
         for _, row in self.test_df.iterrows():
             context_list = []
             for context in self.context_list:

@@ -11,6 +11,9 @@ import scipy.sparse as sp
 from time import time
 import pandas as pd
 
+userid_name = 'user_id'
+itemid_name = 'business_id'
+
 class Data(object):
     def __init__(self, path, batch_size):
         self.path = path
@@ -38,16 +41,16 @@ class Data(object):
         self.train_df = self.full_df
 
         # TODO: Refactor så movieId er itemID?
-        self.n_items = self.full_df['movieId'].nunique()
-        self.n_users = self.full_df['userId'].nunique()
-        self.unique_users = self.full_df['userId'].unique()
+        self.n_items = self.full_df[itemid_name].nunique()
+        self.n_users = self.full_df[userid_name].nunique()
+        self.unique_users = self.full_df[userid_name].unique()
         loo_interactions = []
         #count = 0
         for userid in self.unique_users:
             #if count == 20:
                # break
             for index, row in reverse_full_df.iterrows():
-                if row['userId'] == userid:
+                if row[userid_name] == userid:
                     loo_interactions.append(row)
                     self.train_df.drop(index, inplace=True)
                     break
@@ -81,18 +84,18 @@ class Data(object):
         self.full_df = self.train_df.append(self.test_df)
         
         # TODO: Refactor så movieId er itemID?
-        self.n_items = self.full_df['movieId'].nunique()
-        self.n_users = self.full_df['userId'].nunique()
+        self.n_items = self.full_df[itemid_name].nunique()
+        self.n_users = self.full_df[userid_name].nunique()
 
         self.create_positive_interactions()
         
 
     def create_positive_interactions(self):
         # dictionaries mapping item and user id from full dataset to an index
-        self.item_id_to_index = {k: v for v, k in enumerate(self.full_df['movieId'].unique())}
-        self.user_id_to_index = {k: v for v, k in enumerate(self.full_df['userId'].unique())}
-        self.exist_users_train = self.train_df['userId'].unique()
-        self.exist_users_test = self.test_df['userId'].unique()
+        self.item_id_to_index = {k: v for v, k in enumerate(self.full_df[itemid_name].unique())}
+        self.user_id_to_index = {k: v for v, k in enumerate(self.full_df[userid_name].unique())}
+        self.exist_users_train = self.train_df[userid_name].unique()
+        self.exist_users_test = self.test_df[userid_name].unique()
         self.n_train = len(self.train_df.index)
         self.n_test = len(self.test_df.index)
         
@@ -107,8 +110,8 @@ class Data(object):
         # self.R: [uid, i] = 1 for hver interaction
         
         for _, row in self.train_df.iterrows():
-            userId = row['userId']
-            movieId = row['movieId']
+            userId = row[userid_name]
+            movieId = row[itemid_name]
             self.R[
                 self.user_id_to_index[userId],
                 self.item_id_to_index[movieId]
@@ -119,8 +122,8 @@ class Data(object):
                 self.train_items[userId].append(movieId)
                 
         for _, row in self.test_df.iterrows():
-            userId = row['userId']
-            movieId = row['movieId']
+            userId = row[userid_name]
+            movieId = row[itemid_name]
             if userId not in self.test_set:
                 self.test_set[userId] = [movieId]
             else:

@@ -29,7 +29,7 @@ class LightGCN(object):
         self.pretrain_data = pretrain_data
         self.n_users = data_config['n_users']
         self.n_items = data_config['n_items']
-        self.n_fold = 100
+        self.n_fold = 1
         self.norm_adj = data_config['norm_adj']
         self.n_nonzero_elems = self.norm_adj.count_nonzero()
         self.lr = args.lr
@@ -801,16 +801,10 @@ if __name__ == '__main__':
     best_rec_0 = max(recs[:, 0])
     idx = list(recs[:, 0]).index(best_rec_0)
 
-    if self.data.eval_loo:
-        final_perf = "Best Iter=[%d]@[%.1f]\thit rate=[%s], ndcg=[%s], ret=[%s]" % \
-                    (idx, time() - t0, '\t'.join(['%.5f' % r for r in hits[idx]]),
-                    '\t'.join(['%.5f' % r for r in ndcgs[idx]]),
-                    '\t'.join(['%.5f' % r for r in mrrs[idx]]))
-    else:
-        final_perf = "Best Iter=[%d]@[%.1f]\trecall=[%s], precision=[%s], ndcg=[%s]" % \
-                    (idx, time() - t0, '\t'.join(['%.5f' % r for r in recs[idx]]),
-                    '\t'.join(['%.5f' % r for r in pres[idx]]),
-                    '\t'.join(['%.5f' % r for r in ndcgs[idx]]))
+    final_perf = "Best Iter=[%d]@[%.1f]\trecall=[%s], precision=[%s], ndcg=[%s]" % \
+                (idx, time() - t0, '\t'.join(['%.5f' % r for r in recs[idx]]),
+                '\t'.join(['%.5f' % r for r in pres[idx]]),
+                '\t'.join(['%.5f' % r for r in ndcgs[idx]]))
     print(final_perf)
 
     save_path = '%soutput/%s/%s.result' % (args.proj_path, args.dataset, model.model_type)
