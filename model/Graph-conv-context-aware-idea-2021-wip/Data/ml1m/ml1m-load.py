@@ -2,6 +2,9 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 import datetime
 
+ratings = pd.read_csv('ratings.dat', sep='::', names=['userId', 'movieId', 'rating', 'timestamp'])
+user = pd.read_csv('users.dat', sep='::', names=['userId', 'gender', 'age', 'occupation', 'zipcode'])
+
 def convert_datetime_to_timeofday(datetime):
     # convert the datetime to different timeofday intervals
     if datetime.hour <= 4:
@@ -17,8 +20,18 @@ def convert_datetime_to_timeofday(datetime):
     elif 20 < datetime.hour <= 24:
         return 5
 
-ratings = pd.read_csv('ratings.dat', sep='::', names=['userId', 'movieId', 'rating', 'timestamp'])
-user = pd.read_csv('users.dat', sep='::', names=['userId', 'gender', 'age', 'occupation', 'zipcode'])
+
+
+zipcode_ints = dict()
+for value, key in enumerate(user['zipcode'].unique()):
+    zipcode_ints[key] = value
+
+def convert_zipcode_to_int(zipcode):
+    # convert the datetime to different timeofday intervals
+    return zipcode_ints[zipcode]
+
+# convert zipcode to int
+user['zipcode'] = user['zipcode'].apply(lambda x: convert_zipcode_to_int(x))
 
 # convert timestamp to a datetime
 ratings['datetime'] = ratings['timestamp'].apply(lambda x: datetime.datetime.fromtimestamp(x))
