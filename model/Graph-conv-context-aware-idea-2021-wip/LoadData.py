@@ -63,9 +63,9 @@ class LoadDataset():
             self.item_sideinfo_columns = ['genre']
             self.user_sideinfo_columns = ['yelping_since', 'fans', 'average_stars']
             self.context_list = ['date']
-            self.userid_column_name = 'user_id'  # done
-            self.itemid_column_name = 'business_id'  # done
-            self.path = 'Data/yelpnc/'  # done
+            self.userid_column_name = 'user_id'
+            self.itemid_column_name = 'business_id'
+            self.path = 'Data/yelpnc/'
         elif dataset == 'yelpon':
             self.genrelist = ['SpecialtyFood','Restaurants','EthnicFood','Chinese','Caterers','Food',
                               'EventPlanning&Services','Hotels&Travel','Venues&EventSpaces','Nightlife',
@@ -82,9 +82,9 @@ class LoadDataset():
             self.item_sideinfo_columns = ['genre']
             self.user_sideinfo_columns = ['yelping_since', 'fans', 'average_stars']
             self.context_list = ['date']
-            self.userid_column_name = 'user_id'  # done
-            self.itemid_column_name = 'business_id'  # done
-            self.path = 'Data/yelpon/'  # done
+            self.userid_column_name = 'user_id'
+            self.itemid_column_name = 'business_id'
+            self.path = 'Data/yelpon/'
         else:
             print("No dataset defined")
             exit()
@@ -242,12 +242,9 @@ class LoadDataset():
 
                 if 'genre' in self.item_sideinfo_columns:
                     for column in self.genrelist:
-                        try:
-                            if row[column] == 1:
-                                item_sideinfo_indexes.append(
-                                    self.item_sideinfo_offset_dict[column + str(1)])
-                        except Exception as e:
-                            print(e)
+                        if row[column] == 1:
+                            item_sideinfo_indexes.append(
+                                self.item_sideinfo_offset_dict[column + str(1)])
                     item_sideinfo_dict[row[self.itemid_column_name]
                                     ] = item_sideinfo_indexes
 
