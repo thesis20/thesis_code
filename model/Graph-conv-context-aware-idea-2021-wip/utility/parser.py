@@ -16,7 +16,7 @@ def parse_args():
                         help='Number of layers.')
     parser.add_argument('--mess_dropout', nargs='?', default='[1.0, 1.0, 1.0, 1.0]',
                         help='Keep probability w.r.t. message dropout (i.e., 1-dropout_ratio) for each deep layer. 0: no dropout.')
-    parser.add_argument('--lr', type=float, default=0.01,
+    parser.add_argument('--lr', type=float, default=0.003,
                         help='Learning rate.')
     parser.add_argument('--decay', type=float, default=1e-5,
                         help='Decay for BPR.')
@@ -28,7 +28,7 @@ def parse_args():
                         help='Interval between evaluations (epochs)')
     parser.add_argument('--initializer', nargs='?', default='xavier',
                     help='Choose an initializer from {xavier, normal, glorot, glorot_normal}')
-    parser.add_argument('--optimizer', nargs='?', default='adagrad',
+    parser.add_argument('--optimizer', nargs='?', default='adam',
                         help='Choose an optimizer from {adam, adagrad, RMSProp, Adadelta}')
     parser.add_argument('--eval_method', nargs='?', default='fold',
                         help='Choose an evaluation method from {fold, loo}')

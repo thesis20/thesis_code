@@ -61,15 +61,13 @@ class CSGCN():
                 tf.summary.scalar('test_mrr_last', self.test_mrr_last)
             elif args.eval_method == 'fold':
                 self.test_precision_first = tf.placeholder(tf.float32)
-                tf.summary.scalar('test_precision_first',
-                                  self.test_precision_first)
+                tf.summary.scalar('test_precision_first', self.test_precision_first)
                 self.test_recall_first = tf.placeholder(tf.float32)
                 tf.summary.scalar('test_recall_first', self.test_recall_first)
                 self.test_f1_first = tf.placeholder(tf.float32)
                 tf.summary.scalar('test_f1_first', self.test_f1_first)
                 self.test_precision_last = tf.placeholder(tf.float32)
-                tf.summary.scalar('test_precision_last',
-                                  self.test_precision_last)
+                tf.summary.scalar('test_precision_last', self.test_precision_last)
                 self.test_recall_last = tf.placeholder(tf.float32)
                 tf.summary.scalar('test_recall_last', self.test_recall_last)
                 self.test_f1_last = tf.placeholder(tf.float32)
@@ -106,13 +104,6 @@ class CSGCN():
         else:
             raise Exception("No initializer set")
 
-    def remove_padding_reduce_mean(self, sideinfo, padding):
-        size_split = tf.concat(
-            [tf.subtract(tf.shape(sideinfo)[0], padding), padding], axis=0)
-        sideinfo_no_pad = tf.split(sideinfo, size_split, axis=0)[0]
-        reduction = tf.reduce_mean(sideinfo_no_pad, axis=0)
-        return reduction
-
     def _init_weights(self):
         # TODO: n_context, n_user_sideinfo, n_item_sideinfo
 
@@ -141,8 +132,7 @@ class CSGCN():
         return all_weights
 
     def remove_padding_reduce_mean(self, sideinfo, padding):
-        size_split = tf.concat(
-            [tf.subtract(tf.shape(sideinfo)[0], padding), padding], axis=0)
+        size_split = tf.concat([tf.subtract(tf.shape(sideinfo)[0], padding), padding], axis=0)
         sideinfo_no_pad = tf.split(sideinfo, size_split, axis=0)[0]
         reduction = tf.reduce_mean(sideinfo_no_pad, axis=0)
         return reduction
@@ -198,7 +188,6 @@ class CSGCN():
             self.weights['user_context_embedding'], self.context)
         self.item_context_embeddings_pre = tf.nn.embedding_lookup(
             self.weights['item_context_embedding'], self.context)
-
         # removes embeddings that were padded as 0's and uses reduce_mean on the remaining multihot sideinfo embeddings such as genre
         self.item_sideinfo_embeddings_padding_removed = tf.map_fn(lambda inp: self.remove_padding_reduce_mean(inp[0], inp[1]),
                                                                   (self.item_sideinfo_embeddings, self.item_sideinfo_padding), dtype=(tf.float32))
@@ -332,7 +321,8 @@ class CSGCN():
             + tf.nn.l2_loss(self.pos_i_g_embeddings_pre) \
             + tf.nn.l2_loss(self.neg_i_g_embeddings_pre) \
             + tf.nn.l2_loss(self.user_context_embeddings_pre) \
-            + tf.nn.l2_loss(self.item_context_embeddings_pre)
+            + tf.nn.l2_loss(self.item_context_embeddings_pre) \
+            + tf.nn.l2_loss(self.user_sideinfo_embeddings_pre)
         regularizer = regularizer / self.batch_size
 
         mf_loss = tf.reduce_mean(tf.nn.softplus(-(pos_scores - neg_scores)))
