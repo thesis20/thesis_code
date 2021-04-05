@@ -22,14 +22,13 @@ class CSGCN():
         random.seed(self.random_seed)
         self.decay = args.decay
         self.data = data
+        self.batch_size = self.data.batch_size
         print("Loaded data")
-        self.weight_size = eval(args.weight_size)
-        self.n_layers = len(self.weight_size)
+        self.n_layers = args.n_layers
         self.mess_dropout = eval(args.mess_dropout)
         self.node_dropout = args.keep_prob
         self.emb_dim = args.embed_size
         self.epochs = args.epoch
-        self.batch_size = args.batch
         self.learning_rate = args.lr
         self.initializer = self._set_initializer(args.initializer)
         self.optimizer = self._set_optimizer(args.optimizer)
@@ -336,7 +335,7 @@ class CSGCN():
     def train(self):
         # tensorboard file name
         setup = '[' + args.dataset + '] init[' + str(args.initializer) + '] lr[' + str(args.lr) +'] optim[' + str(args.optimizer) + '] layers[' + str(
-            args.weight_size) + '] batch[' + str(args.batch) + '] keep[' + str(args.keep_prob) + '] decay[' + str(args.decay) + '] ks' + str(args.ks)
+            args.n_layers) + '] keep[' + str(args.keep_prob) + '] decay[' + str(args.decay) + '] ks' + str(args.ks)
         tensorboard_model_path = 'tensorboard/' + setup + '/'
         if not os.path.exists(tensorboard_model_path):
             os.makedirs(tensorboard_model_path)
