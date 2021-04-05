@@ -38,7 +38,6 @@ class CSGCN():
         self._init_graph()
         print("Initialized graph")
 
-
         with tf.name_scope('TRAIN_LOSS'):
             self.train_loss = tf.placeholder(tf.float32)
             tf.summary.scalar('train_loss', self.train_loss)
@@ -62,13 +61,15 @@ class CSGCN():
                 tf.summary.scalar('test_mrr_last', self.test_mrr_last)
             elif args.eval_method == 'fold':
                 self.test_precision_first = tf.placeholder(tf.float32)
-                tf.summary.scalar('test_precision_first', self.test_precision_first)
+                tf.summary.scalar('test_precision_first',
+                                  self.test_precision_first)
                 self.test_recall_first = tf.placeholder(tf.float32)
                 tf.summary.scalar('test_recall_first', self.test_recall_first)
                 self.test_f1_first = tf.placeholder(tf.float32)
                 tf.summary.scalar('test_f1_first', self.test_f1_first)
                 self.test_precision_last = tf.placeholder(tf.float32)
-                tf.summary.scalar('test_precision_last', self.test_precision_last)
+                tf.summary.scalar('test_precision_last',
+                                  self.test_precision_last)
                 self.test_recall_last = tf.placeholder(tf.float32)
                 tf.summary.scalar('test_recall_last', self.test_recall_last)
                 self.test_f1_last = tf.placeholder(tf.float32)
@@ -105,6 +106,13 @@ class CSGCN():
         else:
             raise Exception("No initializer set")
 
+    def remove_padding_reduce_mean(self, sideinfo, padding):
+        size_split = tf.concat(
+            [tf.subtract(tf.shape(sideinfo)[0], padding), padding], axis=0)
+        sideinfo_no_pad = tf.split(sideinfo, size_split, axis=0)[0]
+        reduction = tf.reduce_mean(sideinfo_no_pad, axis=0)
+        return reduction
+
     def _init_weights(self):
         # TODO: n_context, n_user_sideinfo, n_item_sideinfo
 
@@ -116,9 +124,9 @@ class CSGCN():
                                                     name='item_embedding')
 
         all_weights['user_context_embedding'] = tf.Variable(self.initializer([self.data.n_context, self.emb_dim]),
-                                                name='user_context_embedding')
+                                                            name='user_context_embedding')
         all_weights['item_context_embedding'] = tf.Variable(self.initializer([self.data.n_context, self.emb_dim]),
-                                        name='item_context_embedding')
+                                                            name='item_context_embedding')
         all_weights['user_sideinfo_embedding'] = tf.Variable(self.initializer([self.data.n_user_sideinfo, self.emb_dim]),
                                                              name='user_sideinfo_embedding')
         all_weights['item_sideinfo_embedding'] = tf.Variable(self.initializer([self.data.n_item_sideinfo, self.emb_dim]),
@@ -133,14 +141,16 @@ class CSGCN():
         return all_weights
 
     def remove_padding_reduce_mean(self, sideinfo, padding):
-        size_split = tf.concat([tf.subtract(tf.shape(sideinfo)[0], padding), padding], axis=0)
+        size_split = tf.concat(
+            [tf.subtract(tf.shape(sideinfo)[0], padding), padding], axis=0)
         sideinfo_no_pad = tf.split(sideinfo, size_split, axis=0)[0]
         reduction = tf.reduce_mean(sideinfo_no_pad, axis=0)
         return reduction
 
     def _init_graph(self):
         tf.set_random_seed(self.random_seed)
-        self.mess_drop_prob = tf.placeholder_with_default([1.] * self.n_layers, shape=[None])
+        self.mess_drop_prob = tf.placeholder_with_default(
+            [1.] * self.n_layers, shape=[None])
         self.node_drop_prob = tf.placeholder_with_default(1.0, shape=())
 
         self.users = tf.placeholder(tf.int32, shape=[None, None])
@@ -173,7 +183,6 @@ class CSGCN():
         self.item_context_embeddings = tf.nn.embedding_lookup(
             self.item_context_embs, self.context)
 
-
         # Initial weights for BPR regularizer
         self.u_g_embeddings_pre = tf.nn.embedding_lookup(
             self.weights['user_embedding'], self.users)
@@ -189,6 +198,10 @@ class CSGCN():
             self.weights['user_context_embedding'], self.context)
         self.item_context_embeddings_pre = tf.nn.embedding_lookup(
             self.weights['item_context_embedding'], self.context)
+
+        # removes embeddings that were padded as 0's and uses reduce_mean on the remaining multihot sideinfo embeddings such as genre
+        self.item_sideinfo_embeddings_padding_removed = tf.map_fn(lambda inp: self.remove_padding_reduce_mean(inp[0], inp[1]),
+                                                                  (self.item_sideinfo_embeddings, self.item_sideinfo_padding), dtype=(tf.float32))
 
         # Biases
         self.user_bias = tf.nn.embedding_lookup(
@@ -206,8 +219,10 @@ class CSGCN():
                                         self.user_context_embeddings, self.item_context_embeddings,
                                         self.user_bias, self.neg_item_bias)
 
-        self.pos_scores = tf.layers.dropout(self.pos_scores, self.node_drop_prob)
-        self.neg_scores = tf.layers.dropout(self.neg_scores, self.node_drop_prob)
+        self.pos_scores = tf.layers.dropout(
+            self.pos_scores, self.node_drop_prob)
+        self.neg_scores = tf.layers.dropout(
+            self.neg_scores, self.node_drop_prob)
 
         self.loss = self._bpr_loss(self.pos_scores, self.neg_scores)
         self.opt = self.optimizer.minimize(self.loss[0])
@@ -274,7 +289,8 @@ class CSGCN():
 
             # Message dropout
             # ego_embeddings = tf.nn.dropout(ego_embeddings, self.mess_dropout[k])
-            ego_embeddings = tf.nn.dropout(ego_embeddings, self.mess_drop_prob[k])
+            ego_embeddings = tf.nn.dropout(
+                ego_embeddings, self.mess_drop_prob[k])
             norm_embeddings = tf.nn.l2_normalize(ego_embeddings, axis=1)
             all_embeddings += [norm_embeddings]
 
@@ -300,7 +316,8 @@ class CSGCN():
         item_emb_sq_sum = tf.reduce_sum(item_emb_sq, 1)
         user_context_emb_sq_sum = tf.reduce_sum(user_context_emb_sq, 1)
         item_context_emb_sq_sum = tf.reduce_sum(item_context_emb_sq, 1)
-        second_term = tf.add_n([user_emb_sq_sum, item_emb_sq_sum, user_context_emb_sq_sum, item_context_emb_sq_sum])
+        second_term = tf.add_n(
+            [user_emb_sq_sum, item_emb_sq_sum, user_context_emb_sq_sum, item_context_emb_sq_sum])
 
         pred = 0.5 * tf.subtract(first_term, second_term)
 
@@ -311,11 +328,11 @@ class CSGCN():
         return y_hat
 
     def _bpr_loss(self, pos_scores, neg_scores):
-        regularizer = tf.nn.l2_loss(self.u_g_embeddings_pre) + tf.nn.l2_loss(
-            self.pos_i_g_embeddings_pre) + tf.nn.l2_loss(self.neg_i_g_embeddings_pre) \
-                + tf.nn.l2_loss(self.context_embeddings_pre) \
-                + tf.nn.l2_loss(self.user_sideinfo_embeddings) \
-                + tf.nn.l2_loss(self.item_sideinfo_embeddings_padding_removed)
+        regularizer = tf.nn.l2_loss(self.u_g_embeddings_pre) \
+            + tf.nn.l2_loss(self.pos_i_g_embeddings_pre) \
+            + tf.nn.l2_loss(self.neg_i_g_embeddings_pre) \
+            + tf.nn.l2_loss(self.user_context_embeddings_pre) \
+            + tf.nn.l2_loss(self.item_context_embeddings_pre)
         regularizer = regularizer / self.batch_size
 
         mf_loss = tf.reduce_mean(tf.nn.softplus(-(pos_scores - neg_scores)))
@@ -340,7 +357,7 @@ class CSGCN():
 
     def train(self):
         # tensorboard file name
-        setup = '[' + args.dataset + '] init[' + str(args.initializer) + '] lr[' + str(args.lr) +'] optim[' + str(args.optimizer) + '] layers[' + str(
+        setup = '[' + args.dataset + '] init[' + str(args.initializer) + '] lr[' + str(args.lr) + '] optim[' + str(args.optimizer) + '] layers[' + str(
             args.n_layers) + '] keep[' + str(args.keep_prob) + '] decay[' + str(args.decay) + '] ks' + str(args.ks)
         tensorboard_model_path = 'tensorboard/' + setup + '/'
         if not os.path.exists(tensorboard_model_path):
@@ -378,29 +395,30 @@ class CSGCN():
                 if args.eval_method == 'fold':
                     ret = self.evaluate(epoch)
                     summary_test_acc = sess.run(self.merged_test_acc, feed_dict={self.test_precision_first: ret['precision'][0],
-                                                                self.test_precision_last: ret['precision'][-1],
-                                                                self.test_recall_first: ret['recall'][0],
-                                                                self.test_recall_last: ret['recall'][-1],
-                                                                self.test_f1_first: ret['f1'][0],
-                                                                self.test_f1_last: ret['f1'][-1],
-                                                                self.test_ndcg_first: ret['ndcg'][0],
-                                                                self.test_ndcg_last: ret['ndcg'][-1],
-                                                                })
+                                                                                 self.test_precision_last: ret['precision'][-1],
+                                                                                 self.test_recall_first: ret['recall'][0],
+                                                                                 self.test_recall_last: ret['recall'][-1],
+                                                                                 self.test_f1_first: ret['f1'][0],
+                                                                                 self.test_f1_last: ret['f1'][-1],
+                                                                                 self.test_ndcg_first: ret['ndcg'][0],
+                                                                                 self.test_ndcg_last: ret['ndcg'][-1],
+                                                                                 })
                 elif args.eval_method == 'loo':
                     ret = self.evaluate_loo(epoch)
                     summary_test_acc = sess.run(self.merged_test_acc, feed_dict={self.test_hr_first: ret['hr'][0],
-                                                                                self.test_hr_last: ret['hr'][-1],
-                                                                                self.test_ndcg_first: ret['ndcg'][0],
-                                                                                self.test_ndcg_last: ret['ndcg'][-1],
-                                                                                self.test_mrr_first: ret['mrr'][0],
-                                                                                self.test_mrr_last: ret['mrr'][-1],
-                                                                                })
+                                                                                 self.test_hr_last: ret['hr'][-1],
+                                                                                 self.test_ndcg_first: ret['ndcg'][0],
+                                                                                 self.test_ndcg_last: ret['ndcg'][-1],
+                                                                                 self.test_mrr_first: ret['mrr'][0],
+                                                                                 self.test_mrr_last: ret['mrr'][-1],
+                                                                                 })
                 train_writer.add_summary(summary_test_acc, epoch)
 
     def evaluate_loo(self, epoch):
         scores = dict()
 
-        unique_item_ids = self.data.test_df[self.data.itemid_column_name].unique()
+        unique_item_ids = self.data.test_df[self.data.itemid_column_name].unique(
+        )
 
         for _, row in self.data.test_df.iterrows():
             userId = row[self.data.userid_column_name]
@@ -414,15 +432,12 @@ class CSGCN():
             user_sideinfos = []
             item_indexes = []
             item_sideinfos = []
+            item_sideinfos_padding = []
             contexts = []
             for item in self.data.test_df[self.data.itemid_column_name].unique():
                 item_index = self.data.item_offset_dict[item]
                 item_sideinfo = self.data.item_sideinfo_dict[item]
-
-                # if the item has more than one genre, choose a random one
-                if len(item_sideinfo) > 1:
-                    item_sideinfo = [random.choice(item_sideinfo)]
-
+                item_sideinfo_padding = self.data.item_sideinfo_padding[item]
                 user_indexes.append([user_index])
                 user_sideinfos.append(user_sideinfo)
                 item_indexes.append([item_index])
@@ -475,12 +490,13 @@ class CSGCN():
                     contexts.append(list(context_comb))
 
             feed_dict = {self.users: user_indexes, self.pos_interactions: item_indexes,
-                            self.context: contexts, self.user_sideinfo: user_sideinfos,
-                            self.item_sideinfo: item_sideinfos,
-                            self.item_sideinfo_padding: item_sideinfos_padding}
+                         self.context: contexts, self.user_sideinfo: user_sideinfos,
+                         self.item_sideinfo: item_sideinfos,
+                         self.item_sideinfo_padding: item_sideinfos_padding}
             pos_scores = self.sess.run(self.pos_scores, feed_dict=feed_dict)
             pos_scores = np.sum(pos_scores, axis=1)
-            item_ids = [self.data.item_offset_to_id_dict[x[0]] for x in item_indexes]
+            item_ids = [self.data.item_offset_to_id_dict[x[0]]
+                        for x in item_indexes]
             pos_scores = list(zip(item_ids, pos_scores))
 
             pos_scores_dict = dict()
@@ -490,14 +506,17 @@ class CSGCN():
                 else:
                     if score > pos_scores_dict[itemId]:
                         pos_scores_dict[itemId] = score
-            pos_scores_tuple_list = [(k, v) for k, v in pos_scores_dict.items()]
+            pos_scores_tuple_list = [(k, v)
+                                     for k, v in pos_scores_dict.items()]
             # pos_scores_tuple_list (itemID, score)
             # user_train_pos_interactions ([itemIds])
             if userId in self.data.train_set_user_pos_interactions:
-                user_train_pos_interactions = [itemId for (itemId, context) in self.data.train_set_user_pos_interactions[userId]]
+                user_train_pos_interactions = [itemId for (
+                    itemId, context) in self.data.train_set_user_pos_interactions[userId]]
             else:
                 user_train_pos_interactions = []
-            pos_scores_tuple_list = [(itemId, -np.inf) if itemId in user_train_pos_interactions else (itemId, score) for (itemId, score) in pos_scores_tuple_list]
+            pos_scores_tuple_list = [(itemId, -np.inf) if itemId in user_train_pos_interactions else (
+                itemId, score) for (itemId, score) in pos_scores_tuple_list]
 
             scores[userId] = pos_scores_tuple_list
 
@@ -520,7 +539,8 @@ if __name__ == '__main__':
         file_data = open(path, 'rb')
         data = pickle.load(file_data)
     else:
-        data = LoadDataset(random_seed=args.seed, dataset=dataset, eval_method=args.eval_method)
+        data = LoadDataset(random_seed=args.seed,
+                           dataset=dataset, eval_method=args.eval_method)
         path = 'checkpoints/' + dataset + '.chk'
         file_data = open(path, 'wb')
         pickle.dump(data, file_data)
