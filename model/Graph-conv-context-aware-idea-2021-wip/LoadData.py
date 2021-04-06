@@ -32,7 +32,7 @@ class LoadDataset():
                               'Horror', 'Musical', 'Mystery', 'Romance', 'Sci-Fi', 'Thriller', 'War', 'Western']
             self.item_sideinfo_columns = ['genre']
             self.user_sideinfo_columns = [
-                'age', 'gender', 'occupation', 'zipcode']
+                'age', 'gender', 'occupation']
             self.context_list = ['weekday', 'timeofday']
             self.userid_column_name = 'userId'
             self.itemid_column_name = 'movieId'
@@ -45,6 +45,22 @@ class LoadDataset():
             self.userid_column_name = 'user'
             self.itemid_column_name = 'item'
             self.path = 'Data/Frappe/'
+        elif dataset == 'yelpnc':
+            self.genrelist = ['Sandwiches','Food','Bagels','Restaurants','Burgers','ChickenWings','Bars','Nightlife','SportsBars','American(Traditional)','Steakhouses','Tapas/SmallPlates','Breakfast&Brunch','American(New)','Pubs','CocktailBars','TapasBars','Gastropubs','Coffee&Tea','BeerBar','Breweries','Bakeries','Southern','SoulFood','Delis','SpecialtyFood','WineBars','EventPlanning&Services','Caterers','Cafes','Arts&Entertainment','MusicVenues','Pizza','Italian','IceCream&FrozenYogurt','FastFood','Chinese','SushiBars','Thai','AsianFusion','Japanese','Venues&EventSpaces','Mexican','Vietnamese','Hotels&Travel','Diners','ComfortFood','Salad','LocalFlavor','Seafood','NailSalons','Beauty&Spas','French','Shopping','Beer','Wine&Spirits','Barbeque','Soup','Tex-Mex','Fashion','DepartmentStores','Lounges','Vegetarian','ActiveLife','Desserts','LatinAmerican','Cinema','Vegan','Gluten-Free','Greek','Home&Garden','Drugstores','Mediterranean','JuiceBars&Smoothies','Grocery','Noodles','FoodTrucks','Indian','EthnicFood','Flowers&Gifts']
+            self.item_sideinfo_columns = ['genre']
+            self.user_sideinfo_columns = ['yelping_since', 'fans', 'average_stars']
+            self.context_list = ['date']
+            self.userid_column_name = 'user_id'
+            self.itemid_column_name = 'business_id'
+            self.path = 'Data/yelpnc/'
+        elif dataset == 'yelpon':
+            self.genrelist = ['SpecialtyFood','Restaurants','EthnicFood','Chinese','Caterers','Food','EventPlanning&Services','Nightlife','Steakhouses','Bars','Seafood','SportsBars','Canadian(New)','American(Traditional)','Burgers','Italian','CocktailBars','Mediterranean','Hotels&Travel','Venues&EventSpaces','Gastropubs','Arts&Entertainment','Mexican','Barbeque','ComfortFood','Thai','AsianFusion','Pakistani','Buffets','American(New)','Beauty&Spas','Grocery','Coffee&Tea','FastFood','Pizza','Salad','SushiBars','Bakeries','French','Breakfast&Brunch','Korean','IceCream&FrozenYogurt','Noodles','Desserts','Cafes','Diners','Soup','Sandwiches','Ramen','Japanese','Pubs','Vietnamese','Shopping','MiddleEastern','Halal','Taiwanese','Vegan','TeaRooms','Vegetarian','DimSum','WineBars','JuiceBars&Smoothies','Fashion','Caribbean','Beer','Wine&Spirits','ChickenWings','Lounges','TapasBars','Tapas/SmallPlates','Indian','BubbleTea','ActiveLife','Greek','Gluten-Free']
+            self.item_sideinfo_columns = ['genre']
+            self.user_sideinfo_columns = ['yelping_since', 'fans', 'average_stars']
+            self.context_list = ['date']
+            self.userid_column_name = 'user_id'
+            self.itemid_column_name = 'business_id'
+            self.path = 'Data/yelpon/'
         else:
             print("No dataset defined")
             exit()
