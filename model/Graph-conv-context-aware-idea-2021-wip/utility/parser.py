@@ -4,13 +4,13 @@ def parse_args():
     parser = argparse.ArgumentParser(description="CSGCN.")
     parser.add_argument('--load', type=int, default=1,
                         help='1 = Load saved data. 0 = Save new data.')
-    parser.add_argument('--seed', type=int, default=2021,
+    parser.add_argument('--seed', type=int, default=42069,
                         help='Seed for randoms.')
     parser.add_argument('--embed_size', type=int, default=64,
                         help='Embedding size.')
-    parser.add_argument('--dataset', nargs='?', default='yelpnc',
+    parser.add_argument('--dataset', nargs='?', default='ml100k',
                         help='Choose a dataset from {ml100k, ml1m, frappe, yelpnc, yelpon}')
-    parser.add_argument('--epoch', type=int, default=1000,
+    parser.add_argument('--epoch', type=int, default=3500,
                         help='Number of epochs.')
     parser.add_argument('--n_layers', type=int, default=4,
                         help='Number of layers.')
@@ -24,9 +24,9 @@ def parse_args():
                         help='Keep probability w.r.t. node dropout (i.e., 1-dropout_ratio) for each deep layer. 1: no dropout.')
     parser.add_argument('--ks', nargs='?', default='[20, 50]',
                         help='Top k(s) to recommend')
-    parser.add_argument('--eval_interval', type=int, default=500,
+    parser.add_argument('--eval_interval', type=int, default=3500,
                         help='Interval between evaluations (epochs)')
-    parser.add_argument('--initializer', nargs='?', default='xavier',
+    parser.add_argument('--initializer', nargs='?', default='normal',
                     help='Choose an initializer from {xavier, normal, glorot, glorot_normal}')
     parser.add_argument('--optimizer', nargs='?', default='adam',
                         help='Choose an optimizer from {adam, adagrad, RMSProp, Adadelta}')

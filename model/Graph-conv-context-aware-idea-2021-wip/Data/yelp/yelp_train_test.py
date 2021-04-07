@@ -1,13 +1,33 @@
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
-state = 'WI'
+from datetime import datetime
+
+state = 'ON'
 
 file_root = state + '/'
 data_file_path = file_root + state + '_out.txt'
 df = pd.read_csv(data_file_path)
 
-seed = 0
+orig_len = len(df)
+print(f"DF before filter: {orig_len}")
+df = df.groupby('user_id').filter(lambda x: len(x) > 20)
+df = df.groupby('business_id').filter(lambda x: len(x) > 10)
+
+len_1 = len(df)
+len_2 = 0
+while (len_1 != len_2):
+    len_1 = len(df)
+    df = df.groupby('user_id').filter(lambda x: len(x) > 20)
+    df = df.groupby('business_id').filter(lambda x: len(x) > 10)
+    len_2 = len(df)
+    print(f"DF after filter: {len_2}")
+
+print(f"DF after final filter: {len_2}")
+
+
+
+print(df['user_id'].nunique())
 
 categories_dict = dict()
 
@@ -37,9 +57,72 @@ for key, value in tqdm(categories_dict.items()):
 
 df.drop('categories', inplace=True, axis=1)
 
+def convert_date_to_month(date_time_str):
+    # 2019-01-06 20:04:51
+    date_time_obj = datetime.strptime(date_time_str, '%Y-%m-%d %H:%M:%S')
+    month = date_time_obj.month
+    return month
 
-train, test = train_test_split(df, test_size=0.2, random_state=seed)
+def convert_date_to_year(date_time_str):
+    # 2019-01-06 20:04:51
+    date_time_obj = datetime.strptime(date_time_str, '%Y-%m-%d %H:%M:%S')
+    year = date_time_obj.year
+    return year
 
-df.to_csv(file_root + 'out.txt', index=False)
-train.to_csv(file_root + 'train.txt', index=False)
-test.to_csv(file_root + 'test.txt', index=False)
+df['date'] = df['date'].apply(lambda x: convert_date_to_month(x))
+df['yelping_since'] = df['yelping_since'].apply(lambda x: convert_date_to_year(x))
+
+user_id_ints = dict()
+for value, key in enumerate(df['user_id'].unique()):
+    user_id_ints[key] = value
+
+def convert_userid_to_int(userid):
+    return user_id_ints[userid]
+
+
+business_id_ints = dict()
+for value, key in enumerate(df['business_id'].unique()):
+    business_id_ints[key] = value
+
+def convert_businessid_to_int(businessid):
+    return business_id_ints[businessid]
+
+
+df['user_id'] = df['user_id'].apply(lambda x: convert_userid_to_int(x))
+df['business_id'] = df['business_id'].apply(lambda x: convert_businessid_to_int(x))
+
+df = df.drop(columns=df.columns[((df==0).mean()>0.99)],axis=1)
+
+saved = False
+prev = None
+seed = 0
+
+user_count = df['user_id'].nunique()
+item_count = df['business_id'].nunique()
+interactions = len(df.index)
+possible = user_count * item_count
+density = interactions / possible
+
+print(f'Interactions: {interactions} ({user_count} users, {item_count} items, {interactions} interactions)')
+print(f'Density: {density}')
+
+
+while not saved:
+    print(f"Trying seed {seed}")
+    train, test = train_test_split(df, test_size=0.2, random_state=seed)
+
+
+    train_users = set(train['user_id'].unique())
+    test_users = set(test['user_id'].unique())
+
+    train_items = set(train['business_id'].unique())
+    test_items = set(test['business_id'].unique())
+
+    if test_users.issubset(train_users) and test_items.issubset(train_items):
+        print(f"Found good seed: {seed}")
+        df.to_csv(file_root + 'out.txt', index=False)
+        train.to_csv(file_root + 'train.txt', index=False)
+        test.to_csv(file_root + 'test.txt', index=False)
+        break
+    else:
+        seed += 1
