@@ -422,7 +422,7 @@ class CSGCN():
                 user_index = self.data.user_offset_dict[userId]
                 user_sideinfo = self.data.user_sideinfo_dict[userId]
 
-                for item in self.data.full_df[self.data.itemid_column_name].unique():
+                for item in self.data.test_df[self.data.itemid_column_name].unique():
                     item_index = self.data.item_offset_dict[item]
                     item_sideinfo = self.data.item_sideinfo_dict[item]
                     item_sideinfo_padding = self.data.item_sideinfo_padding[item]
@@ -441,7 +441,8 @@ class CSGCN():
             pos_scores = self.sess.run(self.pos_scores, feed_dict=feed_dict)
             pos_scores = np.sum(pos_scores, axis=1)
             item_ids = [self.data.item_offset_to_id_dict[x[0]] for x in item_indexes]
-            pos_scores = list(zip(item_ids, pos_scores))
+            user_ids = [self.data.user_offset_to_id_dict[x[0]] for x in user_indexes]
+            pos_scores = list(zip(user_ids, item_ids, pos_scores))
 
             # pos_scores_dict = dict()
             # for itemId, score in pos_scores:
@@ -452,13 +453,18 @@ class CSGCN():
             #             pos_scores_dict[itemId] = score
             # pos_scores_tuple_list = [(k, v) for k, v in pos_scores_dict.items()]
 
-            if userId in self.data.train_set_user_pos_interactions:
-                user_train_pos_interactions = [itemId for (itemId, context) in self.data.train_set_user_pos_interactions[userId]]
-            else:
-                user_train_pos_interactions = []
-            pos_scores_tuple_list = [(itemId, -np.inf) if itemId in user_train_pos_interactions else (itemId, score) for (itemId, score) in pos_scores]
 
-            scores[userId] = pos_scores_tuple_list
+            score_chunks = list(get_chunk(pos_scores, self.data.n_test_items))
+
+            for chunk in score_chunks:
+                # A chunk is a list of tuples of (userid, itemid, score) - we take the first tuple and find the userId
+                userId = chunk[0][0]
+                if userId in self.data.train_set_user_pos_interactions:
+                    user_train_pos_interactions = [itemId for (itemId, _) in self.data.train_set_user_pos_interactions[userId]]
+                else:
+                    user_train_pos_interactions = []
+                scores[userId] = [(itemId, -np.inf) if itemId in user_train_pos_interactions else (itemId, score) for (_, itemId, score) in chunk]
+
 
             ret = defaultdict(list)
             for k in self.ks:
@@ -473,16 +479,20 @@ class CSGCN():
         for k in self.ks:
 
             a = np.array(ret['precision' + str(k)])
-            precision_list = np.mean(a[a!=-1])
+            a = a[a!=-np.inf]
+            precision_list = np.mean(a)
 
             a = np.array(ret['recall' + str(k)])
-            recall_list = np.mean(a[a!=-1])
+            a = a[a!=-np.inf]
+            recall_list = np.mean(a)
 
             a = np.array(ret['f1' + str(k)])
-            f1_list = np.mean(a[a!=-1])
+            a = a[a!=-np.inf]
+            f1_list = np.mean(a)
 
             a = np.array(ret['ndcg' + str(k)])
-            ndcg_list = np.mean(a[a!=-1])
+            a = a[a!=-np.inf]
+            ndcg_list = np.mean(a)
 
 
 
@@ -498,7 +508,7 @@ class CSGCN():
         print(final_ret)
         return final_ret
 
-def chunk(l, n):
+def get_chunk(l, n):
     n = max(1, n)
     return (l[i:i+n] for i in range(0, len(l), n))
 

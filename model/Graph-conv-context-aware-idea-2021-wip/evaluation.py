@@ -138,10 +138,10 @@ class evaluator():
             f1_value = self.f1(precision_value, recall_value)
             ndcg_value = sum(ndcgs) / len(ndcgs)
         else:
-            precision_value = -1
-            recall_value = -1
-            f1_value = -1
-            ndcg_value = -1
+            precision_value = -np.inf
+            recall_value = -np.inf
+            f1_value = -np.inf
+            ndcg_value = -np.inf
 
 
         # f = open("results.txt", "a")
