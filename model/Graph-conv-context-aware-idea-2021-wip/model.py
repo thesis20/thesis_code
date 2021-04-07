@@ -164,10 +164,10 @@ class CSGCN():
             self.weights['user_sideinfo_embedding'], self.user_sideinfo)
         self.item_sideinfo_embeddings = tf.nn.embedding_lookup(
             self.weights['item_sideinfo_embedding'], self.item_sideinfo)
-        
-        
+
+
         # removes embeddings that were padded as 0's and uses reduce_mean on the remaining multihot sideinfo embeddings such as genre
-        self.item_sideinfo_embeddings_padding_removed = tf.map_fn(lambda inp: self.remove_padding_reduce_mean(inp[0], inp[1]), 
+        self.item_sideinfo_embeddings_padding_removed = tf.map_fn(lambda inp: self.remove_padding_reduce_mean(inp[0], inp[1]),
                                          (self.item_sideinfo_embeddings, self.item_sideinfo_padding), dtype=(tf.float32))
 
         # Initial weights for BPR
@@ -408,24 +408,25 @@ class CSGCN():
         return ret
 
     def evaluate(self, epoch):
-        scores = dict()
 
-        for userId in tqdm(self.data.test_df[self.data.userid_column_name].unique()):
-            user_index = self.data.user_offset_dict[userId]
-            user_sideinfo = self.data.user_sideinfo_dict[userId]
-
+        for context_comb in tqdm(self.data.context_ground_truth_dict):
+            scores = dict()
             user_indexes = []
             user_sideinfos = []
             item_indexes = []
             item_sideinfos = []
             item_sideinfos_padding = []
             contexts = []
-            for item in self.data.full_df[self.data.itemid_column_name].unique():
-                item_index = self.data.item_offset_dict[item]
-                item_sideinfo = self.data.item_sideinfo_dict[item]
-                item_sideinfo_padding = self.data.item_sideinfo_padding[item]
 
-                for context_comb in self.data.context_test_combinations:
+            for userId in self.data.test_df[self.data.userid_column_name].unique():
+                user_index = self.data.user_offset_dict[userId]
+                user_sideinfo = self.data.user_sideinfo_dict[userId]
+
+                for item in self.data.full_df[self.data.itemid_column_name].unique():
+                    item_index = self.data.item_offset_dict[item]
+                    item_sideinfo = self.data.item_sideinfo_dict[item]
+                    item_sideinfo_padding = self.data.item_sideinfo_padding[item]
+
                     user_indexes.append([user_index])
                     user_sideinfos.append(user_sideinfo)
                     item_indexes.append([item_index])
@@ -442,34 +443,67 @@ class CSGCN():
             item_ids = [self.data.item_offset_to_id_dict[x[0]] for x in item_indexes]
             pos_scores = list(zip(item_ids, pos_scores))
 
-            pos_scores_dict = dict()
-            for itemId, score in pos_scores:
-                if itemId not in pos_scores_dict:
-                    pos_scores_dict[itemId] = score
-                else:
-                    if score > pos_scores_dict[itemId]:
-                        pos_scores_dict[itemId] = score
-            pos_scores_tuple_list = [(k, v) for k, v in pos_scores_dict.items()]
-            # pos_scores_tuple_list (itemID, score)
-            # user_train_pos_interactions ([itemIds])
+            # pos_scores_dict = dict()
+            # for itemId, score in pos_scores:
+            #     if itemId not in pos_scores_dict:
+            #         pos_scores_dict[itemId] = score
+            #     else:
+            #         if score > pos_scores_dict[itemId]:
+            #             pos_scores_dict[itemId] = score
+            # pos_scores_tuple_list = [(k, v) for k, v in pos_scores_dict.items()]
+
             if userId in self.data.train_set_user_pos_interactions:
                 user_train_pos_interactions = [itemId for (itemId, context) in self.data.train_set_user_pos_interactions[userId]]
             else:
                 user_train_pos_interactions = []
-            pos_scores_tuple_list = [(itemId, -np.inf) if itemId in user_train_pos_interactions else (itemId, score) for (itemId, score) in pos_scores_tuple_list]
+            pos_scores_tuple_list = [(itemId, -np.inf) if itemId in user_train_pos_interactions else (itemId, score) for (itemId, score) in pos_scores]
 
             scores[userId] = pos_scores_tuple_list
 
-        ret = defaultdict(list)
-        for k in self.ks:
-            precision_value, recall_value, f1_value, ndcg_value = self.evaluator.evaluate(
-                scores, self.data.user_ground_truth_dict, k, epoch)
-            ret['precision'].append(precision_value)
-            ret['recall'].append(recall_value)
-            ret['f1'].append(f1_value)
-            ret['ndcg'].append(ndcg_value)
-        return ret
+            ret = defaultdict(list)
+            for k in self.ks:
+                precision_value, recall_value, f1_value, ndcg_value = self.evaluator.evaluate(
+                    scores, self.data.context_ground_truth_dict[context_comb], k, epoch)
+                ret['precision' + str(k)].append(precision_value)
+                ret['recall' + str(k)].append(recall_value)
+                ret['f1' + str(k)].append(f1_value)
+                ret['ndcg' + str(k)].append(ndcg_value)
 
+        final_ret = defaultdict(list)
+        for k in self.ks:
+
+            a = np.array(ret['precision' + str(k)])
+            precision_list = np.mean(a[a!=-1])
+
+            a = np.array(ret['recall' + str(k)])
+            recall_list = np.mean(a[a!=-1])
+
+            a = np.array(ret['f1' + str(k)])
+            f1_list = np.mean(a[a!=-1])
+
+            a = np.array(ret['ndcg' + str(k)])
+            ndcg_list = np.mean(a[a!=-1])
+
+
+
+            final_ret['precision'].append(precision_list)
+            final_ret['recall'].append(recall_list)
+            final_ret['f1'].append(f1_list)
+            final_ret['ndcg'].append(ndcg_list)
+
+            # final_ret['recall'].append(self.list_avg(ret['recall' + str(k)]))
+            # final_ret['f1'].append(self.list_avg(ret['f1' + str(k)]))
+            # final_ret['ndcg'].append(self.list_avg(ret['ndcg' + str(k)]))
+
+        print(final_ret)
+        return final_ret
+
+def chunk(l, n):
+    n = max(1, n)
+    return (l[i:i+n] for i in range(0, len(l), n))
+
+def list_avg(l):
+    return sum(l)/len(l)
 
 if __name__ == '__main__':
     dataset = args.dataset

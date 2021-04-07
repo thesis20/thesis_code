@@ -8,6 +8,7 @@ import numpy as np
 import random
 from sklearn.preprocessing import normalize
 import math as m
+from collections import defaultdict
 
 
 class LoadDataset():
@@ -22,7 +23,8 @@ class LoadDataset():
             self.item_sideinfo_columns = ['genre']
             self.user_sideinfo_columns = [
                 'age', 'gender', 'occupation']
-            self.context_list = ['weekday', 'timeofday']
+            self.context_list = ['weekday']
+            # self.context_list = ['weekday', 'timeofday']
             self.userid_column_name = 'userId'
             self.itemid_column_name = 'movieId'
             self.path = 'Data/ml100k/'
@@ -193,26 +195,42 @@ class LoadDataset():
         train_set_user_neg_interactions = dict()
         user_sideinfo_dict = dict()
         item_sideinfo_dict = dict()
+        context_ground_truth_dict = dict()
+
+
 
         print('  - Test_df dictionaries')
         for _, row in self.test_df.iterrows():
+            user_id = row[self.userid_column_name]
+            item_id = row[self.itemid_column_name]
+            # Get context for row
+            contexts = tuple()
+            for context in self.context_list:
+                contexts = contexts + (row[context],)
+
+            if contexts not in context_ground_truth_dict:
+                context_ground_truth_dict[contexts] = dict()
+
+            if user_id in context_ground_truth_dict[contexts]:
+                context_ground_truth_dict[contexts][user_id].append(item_id)
+            else:
+                context_ground_truth_dict[contexts][user_id] = [item_id]
+
+
+
             # Add interactions as ground truths
-            if row[self.userid_column_name] not in user_ground_truth_dict:
-                user_ground_truth_dict[row[self.userid_column_name]] = [
-                    row[self.itemid_column_name]]
+            if user_id not in user_ground_truth_dict:
+                user_ground_truth_dict[user_id] = [item_id]
                 # If user has not been observed yet, save sideinfo
                 user_sideinfo_indexes = []
                 for column in self.user_sideinfo_columns:
-                    user_sideinfo_indexes.append(
-                        self.user_sideinfo_offset_dict[column + str(row[column])])
-                user_sideinfo_dict[row[self.userid_column_name]
-                                   ] = user_sideinfo_indexes
+                    user_sideinfo_indexes.append(self.user_sideinfo_offset_dict[column + str(row[column])])
+                user_sideinfo_dict[user_id] = user_sideinfo_indexes
             else:
-                if row[self.itemid_column_name] not in user_ground_truth_dict[row[self.userid_column_name]]:
-                    user_ground_truth_dict[row[self.userid_column_name]].append(
-                        row[self.itemid_column_name])
+                if item_id not in user_ground_truth_dict[user_id]:
+                    user_ground_truth_dict[user_id].append(item_id)
 
-            if row[self.itemid_column_name] not in item_sideinfo_dict:
+            if item_id not in item_sideinfo_dict:
                 # If movie has not been observed yet, save sideinfo
                 item_sideinfo_indexes = []
 
@@ -221,8 +239,7 @@ class LoadDataset():
                         if row[column] == 1:
                             item_sideinfo_indexes.append(
                                 self.item_sideinfo_offset_dict[column + str(1)])
-                    item_sideinfo_dict[row[self.itemid_column_name]
-                                    ] = item_sideinfo_indexes
+                    item_sideinfo_dict[item_id] = item_sideinfo_indexes
 
                 for column in self.item_sideinfo_columns:
                     if column == 'genre':
@@ -296,6 +313,7 @@ class LoadDataset():
         self.train_set_user_pos_interactions = train_set_user_pos_interactions
         # dict with key --> (train userId), value --> (list of negative interaction Ids)
         self.train_set_user_neg_interactions = train_set_user_neg_interactions
+        self.context_ground_truth_dict = context_ground_truth_dict
 
     def sampler(self, batch_size):
         # Negative sampling, samples a random set of users in train set, finds a
