@@ -11,23 +11,27 @@ df = pd.read_csv(data_file_path)
 
 orig_len = len(df)
 print(f"DF before filter: {orig_len}")
-df = df.groupby('user_id').filter(lambda x: len(x) > 10)
-df = df.groupby('business_id').filter(lambda x: len(x) > 10)
+df = df.groupby('user_id').filter(lambda x: len(x) > 20)
+df = df.groupby('business_id').filter(lambda x: len(x) > 20)
 
 len_1 = len(df)
 len_2 = 0
 while (len_1 != len_2):
     len_1 = len(df)
-    df = df.groupby('user_id').filter(lambda x: len(x) > 10)
-    df = df.groupby('business_id').filter(lambda x: len(x) > 10)
+    df = df.groupby('user_id').filter(lambda x: len(x) > 20)
+    df = df.groupby('business_id').filter(lambda x: len(x) > 20)
     len_2 = len(df)
     print(f"DF after filter: {len_2}")
 
 print(f"DF after final filter: {len_2}")
 
+users = df['user_id'].nunique()
+items = df['business_id'].nunique()
+interactions = len(df.index)
 
+sparsity = interactions / (users * items)
 
-print(df['user_id'].nunique())
+print(f"Sparsity: {sparsity}")
 
 categories_dict = dict()
 
@@ -56,6 +60,9 @@ for key, value in tqdm(categories_dict.items()):
     df[key] = value
 
 df.drop('categories', inplace=True, axis=1)
+
+
+df = df.loc[:, (df==0).mean() < .99]
 
 def convert_date_to_month(date_time_str):
     # 2019-01-06 20:04:51
@@ -115,3 +122,4 @@ while not saved:
         break
     else:
         seed += 1
+
