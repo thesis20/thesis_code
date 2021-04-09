@@ -145,13 +145,25 @@ class LoadDataset():
         user_sideinfo_offset_dict = {}
         item_sideinfo_offset_dict = {}
         context_offset_dict = {}
+        item_context_offset_dict = {}
 
+        offset = 0
+        for column in self.context_list:
+            for value in self.full_df[column].unique():
+                context_offset_dict[column + str(value)] = offset
+                offset += 1
+                
+        
         for column in [self.userid_column_name]:
             for index, value in enumerate(self.full_df[column].unique()):
                 user_offset_dict[value] = index
-        for column in [self.itemid_column_name]:
+        for column in [self.itemid_column_name]: # ??
+            offset = 0
             for index, value in enumerate(self.full_df[column].unique()):
                 item_offset_dict[value] = index
+                for context in context_offset_dict.keys():
+                    item_context_offset_dict[(value, context)] = offset
+                    offset += 1
 
         offset = 0
         for column in self.user_sideinfo_columns:
@@ -172,13 +184,6 @@ class LoadDataset():
                 item_sideinfo_offset_dict[column + str(value)] = offset
                 offset += 1
 
-
-        offset = 0
-        for column in self.context_list:
-            for value in self.full_df[column].unique():
-                context_offset_dict[column + str(value)] = offset
-                offset += 1
-
         self.user_offset_dict = user_offset_dict
         self.user_offset_to_id_dict = dict((v,k) for k,v in user_offset_dict.items())
         self.item_offset_dict = item_offset_dict
@@ -186,6 +191,8 @@ class LoadDataset():
         self.user_sideinfo_offset_dict = user_sideinfo_offset_dict
         self.item_sideinfo_offset_dict = item_sideinfo_offset_dict
         self.context_offset_dict = context_offset_dict
+        self.context_offset_to_id_dict = dict((v,k) for k,v in context_offset_dict.items())
+        self.item_context_offset_dict = item_context_offset_dict
 
     def build_dictionaries(self):
         user_ground_truth_dict = dict()
@@ -303,7 +310,7 @@ class LoadDataset():
         # Repeat for size of batch
 
         user_ids, pos_interactions, neg_interactions = [], [], []
-        contexts, user_sideinfo, item_sideinfo, item_sideinfo_padding= [], [], [], []
+        pos_item_contexts, neg_item_contexts, user_sideinfo, item_sideinfo, item_sideinfo_padding= [], [], [], [], []
 
         random_userIds = random.choices(
             list(self.train_set_user_pos_interactions.keys()), k=batch_size)
@@ -313,28 +320,38 @@ class LoadDataset():
                 list(self.train_set_user_pos_interactions[userId]), k=1)[0]
             neg = random.choices(
                 list(self.train_set_user_neg_interactions[userId]), k=1)[0]
+            
+            pos_item_id = pos[0]
+            neg_item_id = neg
+            context = pos[1]
 
             user_ids.append([self.user_offset_dict[userId]])
-            pos_interactions.append([self.item_offset_dict[pos[0]]])
-            neg_interactions.append([self.item_offset_dict[neg]])
-            user_contexts = []
+            pos_interactions.append([self.item_offset_dict[pos_item_id]])
+            neg_interactions.append([self.item_offset_dict[neg_item_id]])
+            pos_item_context = []
+            neg_item_context = []
 
-            for index, context in enumerate(self.context_list, 0):
-                user_contexts.append(
-                    self.context_offset_dict[context + str(pos[1][index])])
-            contexts.append(user_contexts)
+            for index, context_col in enumerate(self.context_list, 0):
+                pos_item_context.append(
+                    self.item_context_offset_dict[(pos_item_id, context_col + str(context[index]))])
+                neg_item_context.append(
+                    self.item_context_offset_dict[(neg_item_id, context_col + str(context[index]))])
+                
+            pos_item_contexts.append(pos_item_context)
+            neg_item_contexts.append(neg_item_context)
             user_sideinfo.append(self.user_sideinfo_dict[userId])
             
-            item_sideinfo_padding.append([self.item_sideinfo_padding[pos[0]]])
-            item_sideinfo.append(self.item_sideinfo_dict[pos[0]])
+            item_sideinfo_padding.append([self.item_sideinfo_padding[pos_item_id]])
+            item_sideinfo.append(self.item_sideinfo_dict[pos_item_id])
 
         return {'user_ids': user_ids, 'pos_interactions': pos_interactions, 'neg_interactions': neg_interactions,
-                'contexts': contexts, 'user_sideinfo': user_sideinfo, 'item_sideinfo': item_sideinfo,
+                'pos_item_contexts': pos_item_contexts, 'neg_item_contexts': neg_item_contexts,
+                'user_sideinfo': user_sideinfo, 'item_sideinfo': item_sideinfo,
                 'item_sideinfo_padding': item_sideinfo_padding}
 
     def _create_adj_mat(self):
         print("  - Adj matrix")
-        adj_mat_size = self.n_users + self.n_items + self.n_context
+        adj_mat_size = self.n_users + self.n_items # + self.n_context
         adj_mat = sparse.dok_matrix(
             (adj_mat_size, adj_mat_size), dtype=np.float32)
 
@@ -354,10 +371,10 @@ class LoadDataset():
             item_offset = self.n_users + item_index
             user_offset = user_index + self.n_users
 
-            for context_index in context_indexes:
-                context_offset = self.n_users + self.n_items + context_index
-                adj_mat[user_index, context_offset] = 1
-                adj_mat[item_offset, context_offset] = 1
+            # for context_index in context_indexes:
+            #     context_offset = self.n_users + self.n_items + context_index
+            #     adj_mat[user_index, context_offset] = 1
+            #     adj_mat[item_offset, context_offset] = 1
 
             try:
                 adj_mat[user_index, item_offset] = 1  # R
@@ -368,9 +385,9 @@ class LoadDataset():
                 raise e
             
         #add 2 times identity matrix
-        for i in range(self.n_context):
-            offset = self.n_users + self.n_items
-            adj_mat[i + offset,i + offset] = 2
+        # for i in range(self.n_context):
+        #     offset = self.n_users + self.n_items
+        #     adj_mat[i + offset,i + offset] = 2
 
             #   U  I  C
             # U 0  R  uc

@@ -114,7 +114,7 @@ class CSGCN():
                                                     name='user_embedding')
         all_weights['item_embedding'] = tf.Variable(self.initializer([self.data.n_items, self.emb_dim]),
                                                     name='item_embedding')
-        all_weights['context_embedding'] = tf.Variable(self.initializer([self.data.n_context, self.emb_dim]),
+        all_weights['context_item_embedding'] = tf.Variable(self.initializer([self.data.n_context*self.data.n_items, self.emb_dim]),
                                                        name='context_embedding')
         all_weights['user_sideinfo_embedding'] = tf.Variable(self.initializer([self.data.n_user_sideinfo, self.emb_dim]),
                                                              name='user_sideinfo_embedding')
@@ -137,19 +137,20 @@ class CSGCN():
 
     def _init_graph(self):
         tf.set_random_seed(self.random_seed)
-        self.mess_drop_prob = tf.placeholder_with_default([1.] * self.n_layers, shape=[None])
-        self.node_drop_prob = tf.placeholder_with_default(1.0, shape=())
+        # self.mess_drop_prob = tf.placeholder_with_default([1.] * self.n_layers, shape=[None])
+        # self.node_drop_prob = tf.placeholder_with_default(1.0, shape=())
 
         self.users = tf.placeholder(tf.int32, shape=[None, None])
         self.pos_interactions = tf.placeholder(tf.int32, shape=[None, None])
         self.neg_interactions = tf.placeholder(tf.int32, shape=[None, None])
-        self.context = tf.placeholder(tf.int32, shape=[None, None])
+        self.pos_item_context = tf.placeholder(tf.int32, shape=[None, None])
+        self.neg_item_context = tf.placeholder(tf.int32, shape=[None, None])
         self.user_sideinfo = tf.placeholder(tf.int32, shape=[None, None])
         self.item_sideinfo = tf.placeholder(tf.int32, shape=[None, None])
         self.item_sideinfo_padding = tf.placeholder(tf.int32, shape=[None, 1])
         self.weights = self._init_weights()
 
-        self.user_embs, self.item_embs, self.context_embs = self._csgcn_layers()
+        self.user_embs, self.item_embs = self._csgcn_layers()
 
         # Learnable weights
         self.user_embeddings = tf.nn.embedding_lookup(
@@ -158,8 +159,10 @@ class CSGCN():
             self.item_embs, self.pos_interactions)
         self.neg_interactions_embeddings = tf.nn.embedding_lookup(
             self.item_embs, self.neg_interactions)
-        self.context_embeddings = tf.nn.embedding_lookup(
-            self.context_embs, self.context)
+        self.pos_item_context_embeddings = tf.nn.embedding_lookup(
+            self.weights['context_item_embedding'], self.pos_item_context)
+        self.neg_item_context_embeddings = tf.nn.embedding_lookup(
+            self.weights['context_item_embedding'], self.neg_item_context)
         self.user_sideinfo_embeddings = tf.nn.embedding_lookup(
             self.weights['user_sideinfo_embedding'], self.user_sideinfo)
         self.item_sideinfo_embeddings = tf.nn.embedding_lookup(
@@ -177,8 +180,7 @@ class CSGCN():
             self.weights['item_embedding'], self.pos_interactions)
         self.neg_i_g_embeddings_pre = tf.nn.embedding_lookup(
             self.weights['item_embedding'], self.neg_interactions)
-        self.context_embeddings_pre = tf.nn.embedding_lookup(
-            self.weights['context_embedding'], self.context)
+
 
         # Biases
         self.user_bias = tf.nn.embedding_lookup(
@@ -188,13 +190,11 @@ class CSGCN():
         self.neg_item_bias = tf.nn.embedding_lookup(
             self.weights['item_bias'], self.neg_interactions)
 
-        self.pos_scores = self._predict(self.user_embeddings, self.pos_interactions_embeddings,
-                                        self.context_embeddings, self.user_bias, self.pos_item_bias)
-        self.neg_scores = self._predict(self.user_embeddings, self.neg_interactions_embeddings,
-                                        self.context_embeddings, self.user_bias, self.neg_item_bias)
 
-        self.pos_scores = tf.layers.dropout(self.pos_scores, self.node_drop_prob)
-        self.neg_scores = tf.layers.dropout(self.neg_scores, self.node_drop_prob)
+        self.pos_scores = self._predict(self.user_embeddings, self.pos_interactions_embeddings,
+                                        self.pos_item_context_embeddings, self.user_bias, self.pos_item_bias)
+        self.neg_scores = self._predict(self.user_embeddings, self.neg_interactions_embeddings,
+                                        self.neg_item_context_embeddings, self.user_bias, self.neg_item_bias)
 
         self.loss = self._bpr_loss(self.pos_scores, self.neg_scores)
         self.opt = self.optimizer.minimize(self.loss[0])
@@ -225,7 +225,7 @@ class CSGCN():
         ue = tf.add(self.weights['user_embedding'], usr_embs)
         ie = tf.add(self.weights['item_embedding'], is_embs)
 
-        embs = tf.concat([ue, ie, self.weights['context_embedding']], axis=0)
+        embs = tf.concat([ue, ie], axis=0)
         all_embeddings = [embs]
 
         for k in range(0, self.n_layers):
@@ -234,32 +234,32 @@ class CSGCN():
 
             # Message dropout
             # ego_embeddings = tf.nn.dropout(ego_embeddings, self.mess_dropout[k])
-            ego_embeddings = tf.nn.dropout(ego_embeddings, self.mess_drop_prob[k])
+            #ego_embeddings = tf.nn.dropout(ego_embeddings, self.mess_drop_prob[k])
             norm_embeddings = tf.nn.l2_normalize(ego_embeddings, axis=1)
             all_embeddings += [norm_embeddings]
 
         all_embeddings = tf.stack(all_embeddings, 1)
         all_embeddings = tf.reduce_mean(all_embeddings, axis=1, keepdims=False)
-        ue, ie, ce = tf.split(
-            all_embeddings, [self.data.n_users, self.data.n_items, self.data.n_context], 0)
+        ue, ie = tf.split(
+            all_embeddings, [self.data.n_users, self.data.n_items], 0)
 
-        return ue, ie, ce
+        return ue, ie
 
     def _predict(self, user_embs, item_embs, context_embs, user_bias, item_bias):
         # TODO: Overvej om vi skal fjerne user embs og bias og tage dem fra self i stedet
         user_emb_sum = tf.reduce_sum(user_embs, 1)
         item_emb_sum = tf.reduce_sum(item_embs, 1)
-        context_emb_sum = tf.reduce_sum(context_embs, 1)
+        #context_emb_sum = tf.reduce_sum(context_embs, 1)
         emb_sum = tf.add_n([user_emb_sum, item_emb_sum])
         first_term = tf.square(emb_sum)
 
         user_emb_sq = tf.square(user_embs)
         item_emb_sq = tf.square(item_embs)
-        context_emb_sq = tf.square(context_embs)
+        #context_emb_sq = tf.square(context_embs)
         user_emb_sq_sum = tf.reduce_sum(user_emb_sq, 1)
         item_emb_sq_sum = tf.reduce_sum(item_emb_sq, 1)
-        context_emb_sq_sum = tf.reduce_sum(context_emb_sq, 1)
-        second_term = tf.add_n([user_emb_sq_sum, item_emb_sq_sum, context_emb_sq_sum])
+        #context_emb_sq_sum = tf.reduce_sum(context_emb_sq, 1)
+        second_term = tf.add_n([user_emb_sq_sum, item_emb_sq_sum])
 
         pred = 0.5 * tf.subtract(first_term, second_term)
 
@@ -272,7 +272,6 @@ class CSGCN():
     def _bpr_loss(self, pos_scores, neg_scores):
         regularizer = tf.nn.l2_loss(self.u_g_embeddings_pre) + tf.nn.l2_loss(
             self.pos_i_g_embeddings_pre) + tf.nn.l2_loss(self.neg_i_g_embeddings_pre) \
-                + tf.nn.l2_loss(self.context_embeddings_pre) \
                 + tf.nn.l2_loss(self.user_sideinfo_embeddings) \
                 + tf.nn.l2_loss(self.item_sideinfo_embeddings)
         regularizer = regularizer / self.batch_size
@@ -290,12 +289,12 @@ class CSGCN():
 
     def _partial_fit(self, data):
         feed_dict = {self.users: data['user_ids'], self.pos_interactions: data['pos_interactions'],
-                     self.neg_interactions: data['neg_interactions'], self.context: data['contexts'],
+                     self.neg_interactions: data['neg_interactions'],
                      self.user_sideinfo: data['user_sideinfo'], self.item_sideinfo: data['item_sideinfo'],
                      self.item_sideinfo_padding: data['item_sideinfo_padding'],
-                     self.mess_drop_prob: self.mess_dropout,
-                     self.node_drop_prob: self.node_dropout}
-        return self.sess.run([self.loss, self.opt], feed_dict=feed_dict)
+                     self.pos_item_context: data['pos_item_contexts'],
+                     self.neg_item_context: data['neg_item_contexts']}
+        return self.sess.run([self.loss, self.opt,], feed_dict=feed_dict)
 
     def train(self):
         # tensorboard file name
@@ -419,7 +418,8 @@ class CSGCN():
             item_indexes = []
             item_sideinfos = []
             item_sideinfos_padding = []
-            contexts = []
+            pos_item_contexts = []
+
             for item in self.data.full_df[self.data.itemid_column_name].unique():
                 item_index = self.data.item_offset_dict[item]
                 item_sideinfo = self.data.item_sideinfo_dict[item]
@@ -431,13 +431,18 @@ class CSGCN():
                     item_indexes.append([item_index])
                     item_sideinfos.append(item_sideinfo)
                     item_sideinfos_padding.append([item_sideinfo_padding])
-                    contexts.append(list(context_comb))
+                    
+                    pos_item_context = []
+                    for context_offset in context_comb:
+                        context_value = self.data.context_offset_to_id_dict[context_offset]
+                        pos_item_context.append(self.data.item_context_offset_dict[(item, context_value)])
+                    pos_item_contexts.append(pos_item_context)
 
             feed_dict = {self.users: user_indexes, self.pos_interactions: item_indexes,
-                            self.context: contexts, self.user_sideinfo: user_sideinfos,
+                            self.pos_item_context: pos_item_contexts, self.user_sideinfo: user_sideinfos,
                             self.item_sideinfo: item_sideinfos,
                             self.item_sideinfo_padding: item_sideinfos_padding}
-            pos_scores = self.sess.run(self.pos_scores, feed_dict=feed_dict)
+            pos_scores = self.sess.run([self.pos_scores], feed_dict=feed_dict)
             pos_scores = np.sum(pos_scores, axis=1)
             item_ids = [self.data.item_offset_to_id_dict[x[0]] for x in item_indexes]
             pos_scores = list(zip(item_ids, pos_scores))
@@ -450,8 +455,7 @@ class CSGCN():
                     if score > pos_scores_dict[itemId]:
                         pos_scores_dict[itemId] = score
             pos_scores_tuple_list = [(k, v) for k, v in pos_scores_dict.items()]
-            # pos_scores_tuple_list (itemID, score)
-            # user_train_pos_interactions ([itemIds])
+
             if userId in self.data.train_set_user_pos_interactions:
                 user_train_pos_interactions = [itemId for (itemId, context) in self.data.train_set_user_pos_interactions[userId]]
             else:
