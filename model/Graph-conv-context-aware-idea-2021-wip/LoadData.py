@@ -398,10 +398,10 @@ class LoadDataset():
                 item_sideinfo_adj_mat[item_offset, item_index] = 1
 
         print("  - Normalizing user sideinfo adj")
-        norm_us_adj_mat = self.normalize_sideinfo(user_sideinfo_adj_mat)
+        norm_us_adj_mat = self.symmetric_normalize(user_sideinfo_adj_mat)
         
         print("  - Normalizing item sideinfo adj")
-        norm_is_adj_mat = self.normalize_sideinfo(item_sideinfo_adj_mat)
+        norm_is_adj_mat = self.symmetric_normalize(item_sideinfo_adj_mat)
         
         print("  - Normalizing full adj")
         # norm_adj_mat = self._normalize_adj_matrix(adj_mat)
@@ -409,73 +409,18 @@ class LoadDataset():
 
         return adj_mat, user_sideinfo_adj_mat, item_sideinfo_adj_mat, norm_adj_mat, norm_us_adj_mat, norm_is_adj_mat
 
-    def _normalize_adj_matrix(self, x):
-
-        matrix_copy = sparse.dok_matrix(x.shape, dtype=np.float32)
-
-        rows, cols, _ = sparse.find(x)
-
-        entries = list(zip(rows, cols))
-
-        ui_counter = dict()
-        iu_counter = dict()
-        #      U    I      C
-        # U  (1,1) (1,2) (1,3)
-        # I  (2,1) (2,2) (2,3)
-        # C  (3,1) (3,2) (3,3)
-        uc_counter = dict()
-        ic_counter = dict()
-
-        for row, col in entries:
-            if row < self.n_users:  # (1,1) (1,2) (1,3)
-                if col > self.n_users + self.n_items:  # (1,3)
-                    if row in uc_counter:
-                        uc_counter[row] += 1
-                    else:
-                        uc_counter[row] = 1
-                else:  # (1,2)
-                    if row in ui_counter:
-                        ui_counter[row] += 1
-                    else:
-                        ui_counter[row] = 1
-            else:
-                if col > self.n_users + self.n_items:  # (2,3)
-                    if row in ic_counter:
-                        ic_counter[row] += 1
-                    else:
-                        ic_counter[row] = 1
-                else:
-                    if row in iu_counter:
-                        iu_counter[row] += 1
-                    else:
-                        iu_counter[row] = 1
-
-        for row, col in entries:
-            if row < self.n_users:
-                if col > self.n_users + self.n_items:
-                    matrix_copy[row, col] = 1.0/uc_counter[row]  # (1,3)
-                else:
-                    matrix_copy[row, col] = 1.0/ui_counter[row]  # (1,2)
-            else:
-                if col > self.n_users + self.n_items:
-                    matrix_copy[row, col] = 1.0/ic_counter[row]  # (2,3)
-                else:
-                    matrix_copy[row, col] = 1.0/iu_counter[row]  # (2,1)
-
-        return matrix_copy
     
     def symmetric_normalize(self, x):
-        mat_size = self.n_users + self.n_items + self.n_context
         diagonal_mat = sparse.dok_matrix(
-            (mat_size, mat_size), dtype=np.float32)
-        for i in range(mat_size):
+            x.shape, dtype=np.float32)
+        for i in range(x.shape[0]):
             non_zero_count = x[i].count_nonzero()
             diagonal_mat[i,i] = non_zero_count
 
         frac_diagonal_mat = diagonal_mat.power(-0.5)
-        #sqrt(2)*D^-(1/2)*A
+        #D^-(1/2)*A
         frac_mul_adj_mat = frac_diagonal_mat.dot(x)
-        result = m.sqrt(2)*frac_mul_adj_mat
+        result = frac_mul_adj_mat
             
         return result
         
