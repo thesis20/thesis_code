@@ -31,7 +31,7 @@ def parse_args():
                         help='Embedding size.')
     parser.add_argument('--layer_size', nargs='?', default='[64, 64, 64, 64]',
                         help='Output sizes of every layer')
-    parser.add_argument('--batch_size', type=int, default=1024,
+    parser.add_argument('--batch_size', type=int, default=95,
                         help='Batch size.')
 
     parser.add_argument('--regs', nargs='?', default='[1e-5,1e-5,1e-2]',
@@ -39,12 +39,12 @@ def parse_args():
     parser.add_argument('--lr', type=float, default=0.01,
                         help='Learning rate.')
 
-    parser.add_argument('--model_type', nargs='?', default='lightgcn',
+    parser.add_argument('--model_type', nargs='?', default='csgcn',
                         help='Specify the name of model (lightgcn).')
     parser.add_argument('--adj_type', nargs='?', default='pre',
                         help='Specify the type of the adjacency (laplacian) matrix from {plain, norm, mean}.')
-    parser.add_argument('--alg_type', nargs='?', default='lightgcn',
-                        help='Specify the type of the graph convolutional layer from {ngcf, gcn, gcmc}.')
+    parser.add_argument('--alg_type', nargs='?', default='csgcn',
+                        help='Specify the type of the graph convolutional layer from {lightgcn, ngcf, gcn, gcmc, csgcn}.')
 
     parser.add_argument('--gpu_id', type=int, default=0,
                         help='0 for NAIS_prod, 1 for NAIS_concat')

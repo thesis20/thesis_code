@@ -29,6 +29,7 @@ class LightGCN(object):
         self.pretrain_data = pretrain_data
         self.n_users = data_config['n_users']
         self.n_items = data_config['n_items']
+        self.n_contexts = data_config['n_contexts']
         self.n_fold = 100
         self.norm_adj = data_config['norm_adj']
         self.n_nonzero_elems = self.norm_adj.count_nonzero()
@@ -52,6 +53,8 @@ class LightGCN(object):
         self.users = tf.placeholder(tf.int32, shape=(None,))
         self.pos_items = tf.placeholder(tf.int32, shape=(None,))
         self.neg_items = tf.placeholder(tf.int32, shape=(None,))
+        self.pos_items_context = tf.placeholder(tf.int32, shape=(None, None))
+        self.neg_items_context = tf.placeholder(tf.int32, shape=(None, None))
         
         self.node_dropout_flag = args.node_dropout_flag
         self.node_dropout = tf.placeholder(tf.float32, shape=[None])
@@ -127,6 +130,9 @@ class LightGCN(object):
         """
         if self.alg_type in ['lightgcn']:
             self.ua_embeddings, self.ia_embeddings = self._create_lightgcn_embed()
+        
+        elif self.alg_type in ['csgcn']:
+            self.ua_embeddings, self.ia_embeddings = self._create_csgcn_embed()
             
         elif self.alg_type in ['ngcf']:
             self.ua_embeddings, self.ia_embeddings = self._create_ngcf_embed()
@@ -147,20 +153,37 @@ class LightGCN(object):
         self.u_g_embeddings_pre = tf.nn.embedding_lookup(self.weights['user_embedding'], self.users)
         self.pos_i_g_embeddings_pre = tf.nn.embedding_lookup(self.weights['item_embedding'], self.pos_items)
         self.neg_i_g_embeddings_pre = tf.nn.embedding_lookup(self.weights['item_embedding'], self.neg_items)
+        self.pos_item_context_pre = tf.nn.embedding_lookup(self.weights['item_context_embedding'], self.pos_items_context)
+        self.neg_item_context_pre = tf.nn.embedding_lookup(self.weights['item_context_embedding'], self.neg_items_context)
+        """
+        *********************************************************
+        reduce mean for context embeddings
+        """
+        self.pos_item_context_pre = tf.reduce_mean(self.pos_item_context_pre, axis=1)
+        self.neg_item_context_pre = tf.reduce_mean(self.neg_item_context_pre, axis=1)
 
         """
         *********************************************************
         Inference for the testing phase.
         """
-        self.batch_ratings = tf.matmul(self.u_g_embeddings, self.pos_i_g_embeddings, transpose_a=False, transpose_b=True)
+        if self.alg_type in ['csgcn']:
+            self.pos_i_g_c_embeddings = tf.add(self.pos_item_context_pre, self.pos_i_g_embeddings_pre)
+            self.batch_ratings = tf.matmul(self.u_g_embeddings, self.pos_i_g_c_embeddings, transpose_a=False, transpose_b=True)
+        else:
+            self.batch_ratings = tf.matmul(self.u_g_embeddings, self.pos_i_g_embeddings, transpose_a=False, transpose_b=True)
 
         """
         *********************************************************
         Generate Predictions & Optimize via BPR loss.
         """
-        self.mf_loss, self.emb_loss, self.reg_loss = self.create_bpr_loss(self.u_g_embeddings,
-                                                                          self.pos_i_g_embeddings,
-                                                                          self.neg_i_g_embeddings)
+        if self.alg_type in ['csgcn']:
+            self.mf_loss, self.emb_loss, self.reg_loss = self.create_bpr_loss_csgcn(self.u_g_embeddings,
+                                                                                    self.pos_i_g_embeddings,
+                                                                                    self.neg_i_g_embeddings)
+        else:
+            self.mf_loss, self.emb_loss, self.reg_loss = self.create_bpr_loss(self.u_g_embeddings,
+                                                                                self.pos_i_g_embeddings,
+                                                                                self.neg_i_g_embeddings)
         self.loss = self.mf_loss + self.emb_loss
 
         self.opt = tf.train.AdamOptimizer(learning_rate=self.lr).minimize(self.loss)
@@ -178,12 +201,15 @@ class LightGCN(object):
         if self.pretrain_data is None:
             all_weights['user_embedding'] = tf.Variable(initializer([self.n_users, self.emb_dim]), name='user_embedding')
             all_weights['item_embedding'] = tf.Variable(initializer([self.n_items, self.emb_dim]), name='item_embedding')
+            all_weights['item_context_embedding'] = tf.Variable(initializer([self.n_items*self.n_contexts, self.emb_dim]), name='item_context_embedding')
             print('using random initialization')#print('using xavier initialization')
         else:
             all_weights['user_embedding'] = tf.Variable(initial_value=self.pretrain_data['user_embed'], trainable=True,
                                                         name='user_embedding', dtype=tf.float32)
             all_weights['item_embedding'] = tf.Variable(initial_value=self.pretrain_data['item_embed'], trainable=True,
                                                         name='item_embedding', dtype=tf.float32)
+            all_weights['item_context_embedding'] = tf.Variable(initial_value=self.pretrain_data['item_context_embed'], trainable=True,
+                                                        name='item_context_embedding', dtype=tf.float32)
             print('using pretrained initialization')
             
         self.weight_size_list = [self.emb_dim] + self.weight_size
@@ -237,6 +263,29 @@ class LightGCN(object):
         return A_fold_hat
 
     def _create_lightgcn_embed(self):
+        if self.node_dropout_flag:
+            A_fold_hat = self._split_A_hat_node_dropout(self.norm_adj)
+        else:
+            A_fold_hat = self._split_A_hat(self.norm_adj)
+        
+        ego_embeddings = tf.concat([self.weights['user_embedding'], self.weights['item_embedding']], axis=0)
+        all_embeddings = [ego_embeddings]
+        
+        for k in range(0, self.n_layers):
+
+            temp_embed = []
+            for f in range(self.n_fold):
+                temp_embed.append(tf.sparse_tensor_dense_matmul(A_fold_hat[f], ego_embeddings))
+
+            side_embeddings = tf.concat(temp_embed, 0)
+            ego_embeddings = side_embeddings
+            all_embeddings += [ego_embeddings]
+        all_embeddings=tf.stack(all_embeddings,1)
+        all_embeddings=tf.reduce_mean(all_embeddings,axis=1,keepdims=False)
+        u_g_embeddings, i_g_embeddings = tf.split(all_embeddings, [self.n_users, self.n_items], 0)
+        return u_g_embeddings, i_g_embeddings
+    
+    def _create_csgcn_embed(self):
         if self.node_dropout_flag:
             A_fold_hat = self._split_A_hat_node_dropout(self.norm_adj)
         else:
@@ -352,6 +401,26 @@ class LightGCN(object):
         
         regularizer = tf.nn.l2_loss(self.u_g_embeddings_pre) + tf.nn.l2_loss(
                 self.pos_i_g_embeddings_pre) + tf.nn.l2_loss(self.neg_i_g_embeddings_pre)
+        regularizer = regularizer / self.batch_size
+        
+        mf_loss = tf.reduce_mean(tf.nn.softplus(-(pos_scores - neg_scores)))
+        
+
+        emb_loss = self.decay * regularizer
+
+        reg_loss = tf.constant(0.0, tf.float32, [1])
+
+        return mf_loss, emb_loss, reg_loss
+    
+    def create_bpr_loss_csgcn(self, users, pos_items, neg_items):
+        pos_items = tf.add(pos_items, self.pos_item_context_pre)
+        neg_items = tf.add(neg_items, self.neg_item_context_pre)
+        pos_scores = tf.reduce_sum(tf.multiply(users, pos_items), axis=1)
+        neg_scores = tf.reduce_sum(tf.multiply(users, neg_items), axis=1)
+        
+        regularizer = tf.nn.l2_loss(self.u_g_embeddings_pre) + tf.nn.l2_loss(
+                    self.pos_i_g_embeddings_pre) + tf.nn.l2_loss(self.neg_i_g_embeddings_pre) \
+                    + tf.nn.l2_loss(self.pos_item_context_pre) + tf.nn.l2_loss(self.neg_item_context_pre)
         regularizer = regularizer / self.batch_size
         
         mf_loss = tf.reduce_mean(tf.nn.softplus(-(pos_scores - neg_scores)))
@@ -517,12 +586,22 @@ class train_thread(threading.Thread):
         self.sample = sample
     def run(self):
 
-        users, pos_items, neg_items = self.sample.data
-        self.data = sess.run([self.model.opt, self.model.loss, self.model.mf_loss, self.model.emb_loss, self.model.reg_loss],
-                                feed_dict={model.users: users, model.pos_items: pos_items,
-                                            model.node_dropout: eval(args.node_dropout),
-                                            model.mess_dropout: eval(args.mess_dropout),
-                                            model.neg_items: neg_items})
+        users, pos_items, neg_items, pos_items_context, neg_items_context = self.sample.data
+        
+        if self.model.alg_type in ['csgcn']:
+            self.data = sess.run([self.model.opt, self.model.loss, self.model.mf_loss, self.model.emb_loss, self.model.reg_loss],
+                                    feed_dict={model.users: users, model.pos_items: pos_items,
+                                                model.pos_items_context: pos_items_context,
+                                                model.neg_items_context: neg_items_context,
+                                                model.node_dropout: eval(args.node_dropout),
+                                                model.mess_dropout: eval(args.mess_dropout),
+                                                model.neg_items: neg_items})
+        else:
+            self.data = sess.run([self.model.opt, self.model.loss, self.model.mf_loss, self.model.emb_loss, self.model.reg_loss],
+                                    feed_dict={model.users: users, model.pos_items: pos_items,
+                                                model.node_dropout: eval(args.node_dropout),
+                                                model.mess_dropout: eval(args.mess_dropout),
+                                                model.neg_items: neg_items})
 
 class train_thread_test(threading.Thread):
     def __init__(self,model, sess, sample):
@@ -532,7 +611,7 @@ class train_thread_test(threading.Thread):
         self.sample = sample
     def run(self):
         
-        users, pos_items, neg_items = self.sample.data
+        users, pos_items, neg_items, _, _ = self.sample.data
         self.data = sess.run([self.model.loss, self.model.mf_loss, self.model.emb_loss],
                                 feed_dict={model.users: users, model.pos_items: pos_items,
                                         model.neg_items: neg_items,
@@ -546,6 +625,7 @@ if __name__ == '__main__':
     config = dict()
     config['n_users'] = data_generator.n_users
     config['n_items'] = data_generator.n_items
+    config['n_contexts'] = data_generator.n_contexts
 
     """
     *********************************************************
@@ -682,7 +762,8 @@ if __name__ == '__main__':
             sample_next.join()
             train_cur.join()
             
-            users, pos_items, neg_items = sample_last.data
+            # TODO: bliver variabler herunder brugt??
+            # users, pos_items, neg_items, _, _ = sample_last.data
             _, batch_loss, batch_mf_loss, batch_emb_loss, batch_reg_loss = train_cur.data
             sample_last = sample_next
         
@@ -724,7 +805,8 @@ if __name__ == '__main__':
             sample_next.join()
             train_cur.join()
             
-            users, pos_items, neg_items = sample_last.data
+            # TODO: bliver variabler herunder brugt??
+            users, pos_items, neg_items, _, _ = sample_last.data
             batch_loss_test, batch_mf_loss_test, batch_emb_loss_test = train_cur.data
             sample_last = sample_next
             
