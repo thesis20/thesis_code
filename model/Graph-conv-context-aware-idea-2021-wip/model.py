@@ -189,7 +189,13 @@ class CSGCN():
             self.weights['item_bias'], self.pos_interactions)
         self.neg_item_bias = tf.nn.embedding_lookup(
             self.weights['item_bias'], self.neg_interactions)
-
+        
+        #self.pos_item_context_mean = tf.reduce_mean(self.pos_item_context_embeddings, axis=1, keepdims=True) # (Batch, context, emb size) -> (Batch, 1, emb size)
+        #self.neg_item_context_mean = tf.reduce_mean(self.neg_item_context_embeddings, axis=1, keepdims=True)
+        #self.pos_item_context = tf.matmul(self.pos_interactions_embeddings, self.pos_item_context_mean, transpose_b=True, name='pos_context_mult') # ()
+        #self.neg_item_context = tf.matmul(self.neg_interactions_embeddings, self.neg_item_context_mean, transpose_b=True, name='neg_context_mult')
+        #self.pos_scores = tf.matmul(self.user_embeddings, self.pos_interactions_embeddings, transpose_b=True) # (Batch_size x Emb) matmul (Batch_size x Emb)
+        #self.neg_scores = tf.matmul(self.user_embeddings, self.neg_interactions_embeddings, transpose_b=True)
 
         self.pos_scores = self._predict(self.user_embeddings, self.pos_interactions_embeddings,
                                         self.pos_item_context_embeddings, self.user_bias, self.pos_item_bias)
@@ -225,7 +231,7 @@ class CSGCN():
         ue = tf.add(self.weights['user_embedding'], usr_embs)
         ie = tf.add(self.weights['item_embedding'], is_embs)
 
-        embs = tf.concat([ue, ie], axis=0)
+        embs = tf.concat([self.weights['user_embedding'], self.weights['item_embedding']], axis=0)
         all_embeddings = [embs]
 
         for k in range(0, self.n_layers):
@@ -247,18 +253,20 @@ class CSGCN():
 
     def _predict(self, user_embs, item_embs, context_embs, user_bias, item_bias):
         # TODO: Overvej om vi skal fjerne user embs og bias og tage dem fra self i stedet
+        item_embs = tf.add(item_embs, context_embs)
+
         user_emb_sum = tf.reduce_sum(user_embs, 1)
         item_emb_sum = tf.reduce_sum(item_embs, 1)
-        #context_emb_sum = tf.reduce_sum(context_embs, 1)
+        context_emb_sum = tf.reduce_sum(context_embs, 1)
         emb_sum = tf.add_n([user_emb_sum, item_emb_sum])
         first_term = tf.square(emb_sum)
 
         user_emb_sq = tf.square(user_embs)
         item_emb_sq = tf.square(item_embs)
-        #context_emb_sq = tf.square(context_embs)
+        context_emb_sq = tf.square(context_embs)
         user_emb_sq_sum = tf.reduce_sum(user_emb_sq, 1)
         item_emb_sq_sum = tf.reduce_sum(item_emb_sq, 1)
-        #context_emb_sq_sum = tf.reduce_sum(context_emb_sq, 1)
+        context_emb_sq_sum = tf.reduce_sum(context_emb_sq, 1)
         second_term = tf.add_n([user_emb_sq_sum, item_emb_sq_sum])
 
         pred = 0.5 * tf.subtract(first_term, second_term)
@@ -294,7 +302,7 @@ class CSGCN():
                      self.item_sideinfo_padding: data['item_sideinfo_padding'],
                      self.pos_item_context: data['pos_item_contexts'],
                      self.neg_item_context: data['neg_item_contexts']}
-        return self.sess.run([self.loss, self.opt,], feed_dict=feed_dict)
+        return self.sess.run([self.loss, self.opt], feed_dict=feed_dict)
 
     def train(self):
         # tensorboard file name
@@ -321,6 +329,7 @@ class CSGCN():
 
             # Run training on batch
             losses, _ = self._partial_fit(batch)
+
             loss, emb_loss, mf_loss = losses
 
             # Run to get summary of train loss
@@ -442,18 +451,30 @@ class CSGCN():
                             self.pos_item_context: pos_item_contexts, self.user_sideinfo: user_sideinfos,
                             self.item_sideinfo: item_sideinfos,
                             self.item_sideinfo_padding: item_sideinfos_padding}
-            pos_scores = self.sess.run([self.pos_scores], feed_dict=feed_dict)
+            pos_scores = self.sess.run(self.pos_scores, feed_dict=feed_dict)
             pos_scores = np.sum(pos_scores, axis=1)
             item_ids = [self.data.item_offset_to_id_dict[x[0]] for x in item_indexes]
             pos_scores = list(zip(item_ids, pos_scores))
 
+            # pos_scores_dict = dict()
+            # for itemId, score in pos_scores:
+            #     if itemId not in pos_scores_dict:
+            #         pos_scores_dict[itemId] = score
+            #     else:
+            #         if score > pos_scores_dict[itemId]:
+            #             pos_scores_dict[itemId] = score
+
             pos_scores_dict = dict()
             for itemId, score in pos_scores:
                 if itemId not in pos_scores_dict:
-                    pos_scores_dict[itemId] = score
+                    pos_scores_dict[itemId] = [score]
                 else:
-                    if score > pos_scores_dict[itemId]:
-                        pos_scores_dict[itemId] = score
+                    pos_scores_dict[itemId].append(score)
+
+            for key in pos_scores_dict.keys():
+                pos_scores_dict[key] = np.mean(pos_scores_dict[key])
+
+
             pos_scores_tuple_list = [(k, v) for k, v in pos_scores_dict.items()]
 
             if userId in self.data.train_set_user_pos_interactions:

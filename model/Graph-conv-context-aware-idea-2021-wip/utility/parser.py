@@ -10,7 +10,7 @@ def parse_args():
                         help='Embedding size.')
     parser.add_argument('--dataset', nargs='?', default='ml100k',
                         help='Choose a dataset from {ml100k, ml1m, frappe}')
-    parser.add_argument('--epoch', type=int, default=1000,
+    parser.add_argument('--epoch', type=int, default=2000,
                         help='Number of epochs.')
     parser.add_argument('--weight_size', nargs='?', default='[64, 64, 64, 64]',
                         help='Size of weights (amount of layers)')
@@ -18,7 +18,7 @@ def parse_args():
                         help='Keep probability w.r.t. message dropout (i.e., 1-dropout_ratio) for each deep layer. 1: no dropout.')
     parser.add_argument('--batch', type=int, default=95,
                         help='Batch size.')
-    parser.add_argument('--lr', type=float, default=0.01,
+    parser.add_argument('--lr', type=float, default=0.003,
                         help='Learning rate.')
     parser.add_argument('--decay', type=float, default=1e-5,
                         help='Decay for BPR.')
@@ -26,7 +26,7 @@ def parse_args():
                         help='Keep probability w.r.t. node dropout (i.e., 1-dropout_ratio) for each deep layer. 1: no dropout.')
     parser.add_argument('--ks', nargs='?', default='[20, 50]',
                         help='Top k(s) to recommend')
-    parser.add_argument('--eval_interval', type=int, default=1000,
+    parser.add_argument('--eval_interval', type=int, default=2000,
                         help='Interval between evaluations (epochs)')
     parser.add_argument('--initializer', nargs='?', default='normal',
                     help='Choose an initializer from {xavier, normal, glorot, glorot_normal}')
