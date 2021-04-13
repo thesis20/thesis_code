@@ -17,16 +17,32 @@ class Data(object):
         self.batch_size = batch_size
         self.loo_eval = False
 
+        if 'ml100k' in self.path:
+            self.user_column_name = 'userId'
+            self.item_column_name = 'movieId'
+            self.context_column_list = ['timeofday', 'weekday']
+
         if self.loo_eval:
             self.init_loo_split()
         else:
             self.init_train_test_split()
+        self.test_context_combinations = self.get_test_context_combinations()
 
+    def get_test_context_combinations(self):
+        # get the unique context combinations in the test set
+        combinations = set()
+
+        for _, row in self.test_df.iterrows():
+            context_list = []
+            for context in self.context_column_list:
+                context_list.append(self.context_offset_dict[context + str(row[context])])
+            combinations.add(tuple(context_list))
+        return combinations
 
     def init_loo_split(self):
-        full_file = self.path + '/full.txt'
+        full_file = self.path + '/out.txt'
 
-        self.n_users, self.n_items = 0, 0
+        self.n_users, self.n_items, self.n_contexts = 0, 0, 0
         self.n_train, self.n_test = 0, 0
         self.neg_pools = {}
 
@@ -37,17 +53,16 @@ class Data(object):
         reverse_full_df = self.full_df[::-1]
         self.train_df = self.full_df
 
-        # TODO: Refactor så movieId er itemID?
-        self.n_items = self.full_df['movieId'].nunique()
-        self.n_users = self.full_df['userId'].nunique()
-        self.unique_users = self.full_df['userId'].unique()
+        self.n_items = self.full_df[self.item_column_name].max()
+        self.n_users = self.full_df[self.user_column_name].max()
+        self.unique_users = self.full_df[self.user_column_name].unique()
         loo_interactions = []
         #count = 0
         for userid in self.unique_users:
             #if count == 20:
                # break
             for index, row in reverse_full_df.iterrows():
-                if row['userId'] == userid:
+                if row[self.user_column_name] == userid:
                     loo_interactions.append(row)
                     self.train_df.drop(index, inplace=True)
                     break
@@ -64,7 +79,7 @@ class Data(object):
         train_file = self.path + '/train.txt'
         test_file = self.path + '/test.txt'
 
-        self.n_users, self.n_items = 0, 0
+        self.n_users, self.n_items, self.n_contexts = 0, 0, 0
         self.n_train, self.n_test = 0, 0
         self.neg_pools = {}
 
@@ -80,23 +95,42 @@ class Data(object):
         self.test_df = pd.read_csv(test_file)
         self.full_df = self.train_df.append(self.test_df)
         
-        # TODO: Refactor så movieId er itemID?
-        self.n_items = self.full_df['movieId'].nunique()
-        self.n_users = self.full_df['userId'].nunique()
+        self.n_items = self.full_df[self.item_column_name].max()
+        self.n_users = self.full_df[self.user_column_name].max()
+        self.n_contexts = sum([self.full_df[context].nunique() for context in self.context_column_list])
+
+        self.unique_items = self.full_df[self.item_column_name].unique()
 
         self.create_positive_interactions()
         
 
     def create_positive_interactions(self):
         # dictionaries mapping item and user id from full dataset to an index
-        self.item_id_to_index = {k: v for v, k in enumerate(self.full_df['movieId'].unique())}
-        self.user_id_to_index = {k: v for v, k in enumerate(self.full_df['userId'].unique())}
-        self.exist_users_train = self.train_df['userId'].unique()
-        self.exist_users_test = self.test_df['userId'].unique()
+        self.item_id_to_index = {k: v for v, k in enumerate(self.full_df[self.item_column_name].unique())}
+        self.user_id_to_index = {k: v for v, k in enumerate(self.full_df[self.user_column_name].unique())}
+        self.exist_users_train = self.train_df[self.user_column_name].unique()
+        self.exist_users_test = self.test_df[self.user_column_name].unique()
         self.n_train = len(self.train_df.index)
         self.n_test = len(self.test_df.index)
+
+        context_offset_dict = {}
+        item_context_offset_dict = {}
+
+        offset = 0
+        for column in self.context_column_list:
+            for value in self.full_df[column].unique():
+                context_offset_dict[column + str(value)] = offset
+                offset += 1
+
+        offset = 0
+        for _, value in enumerate(self.full_df[self.item_column_name].unique()):
+            for context in context_offset_dict.keys():
+                item_context_offset_dict[(value, context)] = offset
+                offset += 1
+
+        self.context_offset_dict = context_offset_dict
+        self.item_context_offset_dict = item_context_offset_dict
         
-        # TODO: Skal her tælles en op?
         self.n_items += 1
         self.n_users += 1
         self.print_statistics()
@@ -107,24 +141,38 @@ class Data(object):
         # self.R: [uid, i] = 1 for hver interaction
         
         for _, row in self.train_df.iterrows():
-            userId = row['userId']
-            movieId = row['movieId']
+            userId = row[self.user_column_name]
+            movieId = row[self.item_column_name]
             self.R[
                 self.user_id_to_index[userId],
                 self.item_id_to_index[movieId]
                 ] = 1
+
+
+            pos_interaction = (row[self.item_column_name],)
+            contexts = tuple()
+            for context in self.context_column_list:
+                contexts = contexts + (row[context],)
+            pos_interaction = pos_interaction + (contexts,)
+
             if userId not in self.train_items:
-                self.train_items[userId] = [movieId]
+                self.train_items[userId] = [pos_interaction]
             else:
-                self.train_items[userId].append(movieId)
+                self.train_items[userId].append(pos_interaction)
                 
         for _, row in self.test_df.iterrows():
-            userId = row['userId']
-            movieId = row['movieId']
+            userId = row[self.user_column_name]
+            pos_interaction = (row[self.item_column_name],)
+            contexts = tuple()
+
+            for context in self.context_column_list:
+                contexts = contexts + (row[context],)
+            pos_interaction = pos_interaction + (contexts,)
+
             if userId not in self.test_set:
-                self.test_set[userId] = [movieId]
+                self.test_set[userId] = [pos_interaction]
             else:
-                self.test_set[userId].append(movieId)
+                self.test_set[userId].append(pos_interaction)
             
 
     def get_adj_mat(self):
@@ -239,13 +287,25 @@ class Data(object):
             neg_items = list(set(self.neg_pools[u]) - set(self.train_items[u]))
             return rd.sample(neg_items, num)
 
-        pos_items, neg_items = [], []
+        pos_items, neg_items, pos_items_context, neg_items_context = [], [], [], []
         for u in users:
-            pos_items += sample_pos_items_for_u(u, 1)
-            neg_items += sample_neg_items_for_u(u, 1)
+            pos_item_id, context = sample_pos_items_for_u(u, 1)[0]
+            neg_item_id = sample_neg_items_for_u(u, 1)[0]
+            pos_items.append(pos_item_id)
+            neg_items.append(neg_item_id)
 
-        return users, pos_items, neg_items
-    
+            pos_item_context, neg_item_context = [], []
+            for index, context_col in enumerate(self.context_column_list, 0):
+                pos_item_context.append(
+                    self.item_context_offset_dict[(pos_item_id, context_col + str(context[index]))])
+                neg_item_context.append(
+                    self.item_context_offset_dict[(neg_item_id, context_col + str(context[index]))])
+
+            pos_items_context.append(pos_item_context)
+            neg_items_context.append(neg_item_context)
+
+        return users, pos_items, neg_items, pos_items_context, neg_items_context
+
     def sample_test(self):
         if self.batch_size <= self.n_users:
             users = rd.sample(self.test_set.keys(), self.batch_size)
@@ -278,16 +338,24 @@ class Data(object):
             neg_items = list(set(self.neg_pools[u]) - set(self.train_items[u]))
             return rd.sample(neg_items, num)
 
-        pos_items, neg_items = [], []
+        pos_items, neg_items, pos_items_context, neg_items_context = [], [], [], []
         for u in users:
-            pos_items += sample_pos_items_for_u(u, 1)
-            neg_items += sample_neg_items_for_u(u, 1)
+            pos_item_id, context = sample_pos_items_for_u(u, 1)[0]
+            neg_item_id = sample_neg_items_for_u(u, 1)[0]
+            pos_items.append(pos_item_id)
+            neg_items.append(neg_item_id)
 
-        return users, pos_items, neg_items
-    
-    
-    
-    
+            pos_item_context, neg_item_context = [], []
+            for index, context_col in enumerate(self.context_column_list, 0):
+                pos_item_context.append(
+                    self.item_context_offset_dict[(pos_item_id, context_col + str(context[index]))])
+                neg_item_context.append(
+                    self.item_context_offset_dict[(neg_item_id, context_col + str(context[index]))])
+
+            pos_items_context.append(pos_item_context)
+            neg_items_context.append(neg_item_context)
+
+        return users, pos_items, neg_items, pos_items_context, neg_items_context
     
     
     def get_num_users_items(self):

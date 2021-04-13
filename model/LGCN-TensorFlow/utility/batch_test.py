@@ -44,28 +44,46 @@ def test(sess, model, users_to_test, drop_flag=False, train_set_flag=0):
         end = (u_batch_id + 1) * u_batch_size
 
         user_batch = test_users[start: end]
-        if drop_flag == False:
-            rate_batch = sess.run(model.batch_ratings, {model.users: user_batch,
-                                                        model.pos_items: item_batch})
+
+        if model.alg_type in ['csgcn']:
+            rate_batch = []
+            for context_comb in data_generator.test_context_combinations:
+                if drop_flag == False:
+                    rate_batch.append(sess.run(model.batch_ratings, {model.users: user_batch,
+                                                                model.pos_items: item_batch,
+                                                                model.pos_items_context: [context_comb]}))
+                else:
+                    rate_batch.append(sess.run(model.batch_ratings, {model.users: user_batch,
+                                                                model.pos_items: item_batch,
+                                                                model.node_dropout: [0.] * len(eval(args.layer_size)),
+                                                                model.mess_dropout: [0.] * len(eval(args.layer_size)),
+                                                                model.pos_items_context: [context_comb]}))
+            rate_batch = np.reshape(rate_batch, (len(data_generator.test_context_combinations), len(user_batch), len(data_generator.unique_items)))
+            rate_batch = np.mean(rate_batch, axis=0)
         else:
-            rate_batch = sess.run(model.batch_ratings, {model.users: user_batch,
-                                                        model.pos_items: item_batch,
-                                                        model.node_dropout: [0.] * len(eval(args.layer_size)),
-                                                        model.mess_dropout: [0.] * len(eval(args.layer_size))})
+            if drop_flag == False:
+                rate_batch = sess.run(model.batch_ratings, {model.users: user_batch,
+                                                            model.pos_items: item_batch})
+            else:
+                rate_batch = sess.run(model.batch_ratings, {model.users: user_batch,
+                                                            model.pos_items: item_batch,
+                                                            model.node_dropout: [0.] * len(eval(args.layer_size)),
+                                                            model.mess_dropout: [0.] * len(eval(args.layer_size))})
+
         rate_batch = np.array(rate_batch)# (B, N)
         test_items = []
         if train_set_flag == 0:
             for user in user_batch:
-                test_items.append(data_generator.test_set[user])# (B, #test_items)
+                test_items.append([itemId for itemId, _ in data_generator.test_set[user]]) # (B, #test_items)
                 
             # set the ranking scores of training items to -inf,
             # then the training items will be sorted at the end of the ranking list.    
             for idx, user in enumerate(user_batch):
-                    train_items_off = data_generator.train_items[user]
+                    train_items_off = [itemId for itemId, _ in data_generator.train_items[user]]
                     rate_batch[idx][train_items_off] = -np.inf
         else:
             for user in user_batch:
-                test_items.append(data_generator.train_items[user])
+                test_items.append([itemId for itemId, _ in data_generator.train_items[user]])
         
         batch_result = eval_score_matrix_foldout(rate_batch, test_items, max_top)#(B,k*metric_num), max_top= 20
         count += len(batch_result)
@@ -104,15 +122,35 @@ def test_loo(sess, model, users_to_test, drop_flag=False, train_set_flag=0):
         end = (u_batch_id + 1) * u_batch_size
 
         user_batch = test_users[start: end]
-        if drop_flag == False:
-            rate_batch = sess.run(model.batch_ratings, {model.users: user_batch,
-                                                        model.pos_items: item_batch})
+
+        if model.alg_type in ['csgcn:']:
+            rate_batch = []
+
+            for context_comb in data_generator.test_context_combinations:
+                if drop_flag == False:
+                    rate_batch = sess.run(model.batch_ratings, {model.users: user_batch,
+                                                                model.pos_items: item_batch,
+                                                                model.pos_items_context: [context_comb]})
+                else:
+                    rate_batch = sess.run(model.batch_ratings, {model.users: user_batch,
+                                                                model.pos_items: item_batch,
+                                                                model.node_dropout: [0.] * len(eval(args.layer_size)),
+                                                                model.mess_dropout: [0.] * len(eval(args.layer_size)),
+                                                                model.pos_items_context: [context_comb]})
+                rate_batch = np.array(rate_batch)# (B, N)
+
+            rate_batch = np.reshape(rate_batch, (len(data_generator.test_context_combinations), len(user_batch), len(data_generator.unique_items)))
+            rate_batch = np.mean(rate_batch, axis=0)
         else:
-            rate_batch = sess.run(model.batch_ratings, {model.users: user_batch,
-                                                        model.pos_items: item_batch,
-                                                        model.node_dropout: [0.] * len(eval(args.layer_size)),
-                                                        model.mess_dropout: [0.] * len(eval(args.layer_size))})
-        rate_batch = np.array(rate_batch)# (B, N)
+            if drop_flag == False:
+                rate_batch = sess.run(model.batch_ratings, {model.users: user_batch,
+                                                            model.pos_items: item_batch})
+            else:
+                rate_batch = sess.run(model.batch_ratings, {model.users: user_batch,
+                                                            model.pos_items: item_batch,
+                                                            model.node_dropout: [0.] * len(eval(args.layer_size)),
+                                                            model.mess_dropout: [0.] * len(eval(args.layer_size))})
+            rate_batch = np.array(rate_batch)# (B, N)
 
         if train_set_flag == 0:
             test_items = data_generator.test_set
