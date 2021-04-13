@@ -167,7 +167,7 @@ class LightGCN(object):
         Inference for the testing phase.
         """
         if self.alg_type in ['csgcn']:
-            self.pos_i_g_c_embeddings = tf.add(self.pos_item_context_pre, self.pos_i_g_embeddings_pre)
+            self.pos_i_g_c_embeddings = tf.add(self.pos_item_context_pre, self.pos_i_g_embeddings)
             self.batch_ratings = tf.matmul(self.u_g_embeddings, self.pos_i_g_c_embeddings, transpose_a=False, transpose_b=True)
         else:
             self.batch_ratings = tf.matmul(self.u_g_embeddings, self.pos_i_g_embeddings, transpose_a=False, transpose_b=True)
@@ -611,12 +611,14 @@ class train_thread_test(threading.Thread):
         self.sample = sample
     def run(self):
         
-        users, pos_items, neg_items, _, _ = self.sample.data
+        users, pos_items, neg_items, pos_items_context, neg_items_context = self.sample.data
         self.data = sess.run([self.model.loss, self.model.mf_loss, self.model.emb_loss],
                                 feed_dict={model.users: users, model.pos_items: pos_items,
-                                        model.neg_items: neg_items,
-                                        model.node_dropout: eval(args.node_dropout),
-                                        model.mess_dropout: eval(args.mess_dropout)})       
+                                            model.pos_items_context: pos_items_context,
+                                            model.neg_items_context: neg_items_context,
+                                            model.neg_items: neg_items,
+                                            model.node_dropout: eval(args.node_dropout),
+                                            model.mess_dropout: eval(args.mess_dropout)})       
 
 if __name__ == '__main__':
     os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu_id)
@@ -779,7 +781,7 @@ if __name__ == '__main__':
             print('ERROR: loss is nan.')
             sys.exit()
         
-        if (epoch % 20) != 0:
+        if (epoch % 1) != 0:
             if args.verbose > 0 and epoch % args.verbose == 0:
                 perf_str = 'Epoch %d [%.1fs]: train==[%.5f=%.5f + %.5f]' % (
                     epoch, time() - t1, loss, mf_loss, emb_loss)
@@ -806,7 +808,7 @@ if __name__ == '__main__':
             train_cur.join()
             
             # TODO: bliver variabler herunder brugt??
-            users, pos_items, neg_items, _, _ = sample_last.data
+            #users, pos_items, neg_items, _, _ = sample_last.data
             batch_loss_test, batch_mf_loss_test, batch_emb_loss_test = train_cur.data
             sample_last = sample_next
             
@@ -883,7 +885,7 @@ if __name__ == '__main__':
     best_rec_0 = max(recs[:, 0])
     idx = list(recs[:, 0]).index(best_rec_0)
 
-    if self.data.eval_loo:
+    if model.model_data.loo_eval:
         final_perf = "Best Iter=[%d]@[%.1f]\thit rate=[%s], ndcg=[%s], ret=[%s]" % \
                     (idx, time() - t0, '\t'.join(['%.5f' % r for r in hits[idx]]),
                     '\t'.join(['%.5f' % r for r in ndcgs[idx]]),
