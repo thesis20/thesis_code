@@ -36,7 +36,7 @@ def parse_args():
 
     parser.add_argument('--regs', nargs='?', default='[1e-5,1e-5,1e-2]',
                         help='Regularizations.')
-    parser.add_argument('--lr', type=float, default=0.01,
+    parser.add_argument('--lr', type=float, default=0.003,
                         help='Learning rate.')
 
     parser.add_argument('--model_type', nargs='?', default='csgcn',
@@ -56,7 +56,7 @@ def parse_args():
     parser.add_argument('--mess_dropout', nargs='?', default='[0.1]',
                         help='Keep probability w.r.t. message dropout (i.e., 1-dropout_ratio) for each deep layer. 1: no dropout.')
 
-    parser.add_argument('--Ks', nargs='?', default='[20]',
+    parser.add_argument('--Ks', nargs='?', default='[20, 50]',
                         help='Top k(s) recommend')
 
     parser.add_argument('--save_flag', type=int, default=0,

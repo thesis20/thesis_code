@@ -13,6 +13,7 @@ import pandas as pd
 
 class Data(object):
     def __init__(self, path, batch_size):
+        print("Init load data")
         self.path = path
         
         if 'ml100k' in self.path:
@@ -28,6 +29,18 @@ class Data(object):
         else:
             self.init_train_test_split()
 
+        self.test_context_combinations = self.get_test_context_combinations()
+
+    def get_test_context_combinations(self):
+        # get the unique context combinations in the test set
+        combinations = set()
+        
+        for _, row in self.test_df.iterrows():
+            context_list = []
+            for context in self.context_column_list:
+                context_list.append(self.context_offset_dict[context + str(row[context])])
+            combinations.add(tuple(context_list))
+        return combinations
 
     def init_loo_split(self):
         full_file = self.path + '/out.txt'
@@ -43,10 +56,10 @@ class Data(object):
         reverse_full_df = self.full_df[::-1]
         self.train_df = self.full_df
 
-        # TODO: Refactor så movieId er itemID?
         self.n_items = self.full_df[self.item_column_name].nunique()
         self.n_users = self.full_df[self.user_column_name].nunique()
         self.unique_users = self.full_df[self.user_column_name].unique()
+        self.unique_items = self.full_df[self.item_column_name].unique()
         loo_interactions = []
         #count = 0
         for userid in self.unique_users:
@@ -89,6 +102,7 @@ class Data(object):
         self.n_items = self.full_df[self.item_column_name].nunique()
         self.n_users = self.full_df[self.user_column_name].nunique()
         self.n_contexts = sum([self.full_df[context].nunique() for context in self.context_column_list])
+        self.unique_items = self.full_df[self.item_column_name].unique()
 
         self.create_positive_interactions()
         
@@ -151,11 +165,17 @@ class Data(object):
                 
         for _, row in self.test_df.iterrows():
             userId = row[self.user_column_name]
-            movieId = row[self.item_column_name]
+            pos_interaction = (row[self.item_column_name],)
+            contexts = tuple()
+            
+            for context in self.context_column_list:
+                contexts = contexts + (row[context],)
+            pos_interaction = pos_interaction + (contexts,)
+            
             if userId not in self.test_set:
-                self.test_set[userId] = [movieId]
+                self.test_set[userId] = [pos_interaction]
             else:
-                self.test_set[userId].append(movieId)
+                self.test_set[userId].append(pos_interaction)
             
 
     def get_adj_mat(self):
@@ -261,7 +281,8 @@ class Data(object):
             neg_items = []
             while True:
                 if len(neg_items) == num: break
-                neg_id = np.random.randint(low=0, high=self.n_items,size=1)[0]
+                neg_index = np.random.randint(low=0, high=self.n_items - 1,size=1)[0]
+                neg_id = self.unique_items[neg_index]
                 if neg_id not in [itemId for itemId,_ in self.train_items[u]] and neg_id not in neg_items:
                     neg_items.append(neg_id)
             return neg_items
@@ -312,21 +333,35 @@ class Data(object):
             neg_items = []
             while True:
                 if len(neg_items) == num: break
-                neg_id = np.random.randint(low=0, high=self.n_items, size=1)[0]
-                if neg_id not in (self.test_set[u]+self.train_items[u]) and neg_id not in neg_items:
+                neg_index = np.random.randint(low=0, high=self.n_items - 1, size=1)[0]
+                neg_id = self.unique_items[neg_index]
+                if neg_id not in [itemId for itemId,_ in self.test_set[u]+self.train_items[u]] and neg_id not in neg_items:
                     neg_items.append(neg_id)
             return neg_items
+
     
         def sample_neg_items_for_u_from_pools(u, num):
             neg_items = list(set(self.neg_pools[u]) - set(self.train_items[u]))
             return rd.sample(neg_items, num)
-
-        pos_items, neg_items = [], []
+    
+        pos_items, neg_items, pos_items_context, neg_items_context = [], [], [], []
         for u in users:
-            pos_items += sample_pos_items_for_u(u, 1)
-            neg_items += sample_neg_items_for_u(u, 1)
+            pos_item_id, context = sample_pos_items_for_u(u, 1)[0]
+            neg_item_id = sample_neg_items_for_u(u, 1)[0]
+            pos_items.append(pos_item_id)
+            neg_items.append(neg_item_id)
+            
+            pos_item_context, neg_item_context = [], []
+            for index, context_col in enumerate(self.context_column_list, 0):
+                pos_item_context.append(
+                    self.item_context_offset_dict[(pos_item_id, context_col + str(context[index]))])
+                neg_item_context.append(
+                    self.item_context_offset_dict[(neg_item_id, context_col + str(context[index]))])
+                
+            pos_items_context.append(pos_item_context)
+            neg_items_context.append(neg_item_context)
 
-        return users, pos_items, neg_items
+        return users, pos_items, neg_items, pos_items_context, neg_items_context
     
     
     

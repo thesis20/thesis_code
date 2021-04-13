@@ -17,7 +17,6 @@ cores = multiprocessing.cpu_count() // 2
 args = parse_args()
 
 data_generator = Data(path=args.data_path + args.dataset, batch_size=args.batch_size)
-USR_NUM, ITEM_NUM = data_generator.n_users, data_generator.n_items
 N_TRAIN, N_TEST = data_generator.n_train, data_generator.n_test
 
 BATCH_SIZE = args.batch_size
@@ -38,34 +37,54 @@ def test(sess, model, users_to_test, drop_flag=False, train_set_flag=0):
     
     count = 0
     all_result = []
-    item_batch = range(ITEM_NUM)
     for u_batch_id in range(n_user_batchs):
         start = u_batch_id * u_batch_size
         end = (u_batch_id + 1) * u_batch_size
 
         user_batch = test_users[start: end]
-        if drop_flag == False:
-            rate_batch = sess.run(model.batch_ratings, {model.users: user_batch,
-                                                        model.pos_items: item_batch})
+        
+        if model.alg_type in ['csgcn']:
+            rate_batch = []
+            for context_comb in data_generator.test_context_combinations:
+                if drop_flag == False:
+                    rate_batch.append(sess.run(model.batch_ratings, {model.users: user_batch,
+                                                                model.pos_items: data_generator.unique_items,
+                                                                model.pos_items_context: [context_comb]}))
+                else:
+                    rate_batch.append(sess.run(model.batch_ratings, {model.users: user_batch,
+                                                                model.pos_items: data_generator.unique_items,
+                                                                model.node_dropout: [0.] * len(eval(args.layer_size)),
+                                                                model.mess_dropout: [0.] * len(eval(args.layer_size)),
+                                                                model.pos_items_context: [context_comb]}))
+            # (c0, c1,.. cn) (42, 95, 1682)
+            rate_batch = np.reshape(rate_batch, (len(data_generator.test_context_combinations), len(user_batch), len(data_generator.unique_items)))
+            rate_batch_2 = np.stack(rate_batch, axis=0)
+            rate_batch = np.mean(rate_batch, axis=0)
         else:
-            rate_batch = sess.run(model.batch_ratings, {model.users: user_batch,
-                                                        model.pos_items: item_batch,
-                                                        model.node_dropout: [0.] * len(eval(args.layer_size)),
-                                                        model.mess_dropout: [0.] * len(eval(args.layer_size))})
+            if drop_flag == False:
+                rate_batch = sess.run(model.batch_ratings, {model.users: user_batch,
+                                                            model.pos_items: data_generator.unique_items})
+            else:
+                rate_batch = sess.run(model.batch_ratings, {model.users: user_batch,
+                                                            model.pos_items: data_generator.unique_items,
+                                                            model.node_dropout: [0.] * len(eval(args.layer_size)),
+                                                            model.mess_dropout: [0.] * len(eval(args.layer_size))})
         rate_batch = np.array(rate_batch)# (B, N)
         test_items = []
         if train_set_flag == 0:
             for user in user_batch:
-                test_items.append(data_generator.test_set[user])# (B, #test_items)
+                test_items.append([itemId for itemId, _ in data_generator.test_set[user]])# (B, #test_items)
                 
             # set the ranking scores of training items to -inf,
             # then the training items will be sorted at the end of the ranking list.    
             for idx, user in enumerate(user_batch):
-                    train_items_off = data_generator.train_items[user]
+                    train_items_off = [itemId for itemId, _ in data_generator.train_items[user]]
+                    train_items_off = [data_generator.item_id_to_index[x] for x in train_items_off]
                     rate_batch[idx][train_items_off] = -np.inf
         else:
             for user in user_batch:
-                test_items.append(data_generator.train_items[user])
+                # TODO: Does this work with LightGCN
+                test_items.append([itemId for itemId, _ in data_generator.train_items[user]])
         
         batch_result = eval_score_matrix_foldout(rate_batch, test_items, max_top)#(B,k*metric_num), max_top= 20
         count += len(batch_result)
@@ -98,6 +117,7 @@ def test_loo(sess, model, users_to_test, drop_flag=False, train_set_flag=0):
     
     count = 0
     all_result = []
+    # TODO: Fiks
     item_batch = range(ITEM_NUM)
     for u_batch_id in range(n_user_batchs):
         start = u_batch_id * u_batch_size
