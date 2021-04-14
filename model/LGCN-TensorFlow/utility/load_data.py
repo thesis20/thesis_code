@@ -49,10 +49,10 @@ class Data(object):
         if 'frappe' in self.path:
             self.user_column_name = 'user'
             self.item_column_name = 'item'
-            self.context_column_list = ['weekday', 'isweekend', 'weather', 'timeofday']
-            self.item_sideinfo_multihot = []
-            self.item_sideinfo_onehot = ['cost']
-            self.user_sideinfo_onehot = ['country', 'city']
+            self.context_column_list = ['weekday', 'isweekend', 'country', 'city', 'weather', 'timeofday']
+            self.item_sideinfo_multihot = ['cost']
+            self.item_sideinfo_onehot = []
+            self.user_sideinfo_onehot = []
 
         if self.loo_eval:
             self.init_loo_split()
