@@ -480,9 +480,9 @@ if __name__ == '__main__':
         data = pickle.load(file_data)
     else:
         data = LoadDataset(random_seed=args.seed, dataset=dataset, eval_method=args.eval_method)
-        #path = 'checkpoints/' + dataset + '.chk'
-       # file_data = open(path, 'wb')
-        #pickle.dump(data, file_data)
+        path = 'checkpoints/' + dataset + '.chk'
+        file_data = open(path, 'wb')
+        pickle.dump(data, file_data)
 
     with tf.Session() as sess:
         model = CSGCN(sess, data)
