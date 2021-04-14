@@ -111,9 +111,55 @@ def test(sess, model, users_to_test, drop_flag=False, train_set_flag=0):
             
 
 
+def test_loo(sess, model, users_to_test, drop_flag=False, train_set_flag=0):
+        # B: batch size
+    # N: the number of items
+    top_show = np.sort(model.Ks)
+    max_top = max(top_show)
+    result = {'hit': np.zeros(len(model.Ks)), 'ndcg': np.zeros(len(model.Ks)), 'mrr': np.zeros(len(model.Ks))}
+
+    u_batch_size = BATCH_SIZE
+
+    test_users = users_to_test
+    n_test_users = len(test_users)
+    n_user_batchs = n_test_users // u_batch_size + 1
+
+    count = 0
+    all_result = []
+    item_batch = range(ITEM_NUM)
+    for u_batch_id in range(n_user_batchs):
+        start = u_batch_id * u_batch_size
+        end = (u_batch_id + 1) * u_batch_size
+
+        user_batch = test_users[start: end]
+        if drop_flag == False:
+            rate_batch = sess.run(model.batch_ratings, {model.users: user_batch,
+                                                        model.pos_items: item_batch})
+        else:
+            rate_batch = sess.run(model.batch_ratings, {model.users: user_batch,
+                                                        model.pos_items: item_batch,
+                                                        model.node_dropout: [0.] * len(eval(args.layer_size)),
+                                                        model.mess_dropout: [0.] * len(eval(args.layer_size))})
+        rate_batch = np.array(rate_batch)# (B, N)
+
+        if train_set_flag == 0:
+            test_items = data_generator.test_set
+        else:
+            test_items = data_generator.train_items
 
 
+        batch_result = eval_score_matrix_loo(rate_batch, test_items, max_top)#(B,k*metric_num), max_top= 20
+        count += len(batch_result)
+        all_result.append(batch_result)
 
 
-
-
+    assert count == n_test_users
+    all_result = np.concatenate(all_result, axis=0)
+    final_result = np.mean(all_result, axis=0)  # mean
+    final_result = np.reshape(final_result, newshape=[3, max_top])
+    final_result = final_result[:, top_show-1]
+    final_result = np.reshape(final_result, newshape=[3, len(top_show)])
+    result['hit'] += final_result[0]
+    result['ndcg'] += final_result[1]
+    result['mrr'] += final_result[2]
+    return result
