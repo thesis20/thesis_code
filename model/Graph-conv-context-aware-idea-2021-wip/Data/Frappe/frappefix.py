@@ -6,19 +6,15 @@ df = pd.read_csv('out.txt', names=['user','item','weekday','isweekend','cost','w
 test = pd.read_csv('test.txt', names=['user','item','weekday','isweekend','cost','weather','country','city','timeofday'])
 train = pd.read_csv('train.txt', names=['user','item','weekday','isweekend','cost','weather','country','city','timeofday'])
 
-print(len(df['user'].unique()))
-
-print(len(df['user'].unique()))
 user_id_ints = dict()
+
 for value, key in enumerate(df['user'].unique()):
     user_id_ints[key] = value
-
 
 def convert_userid_to_int(userid):
     if isinstance(userid, str):
         userid = int(userid)
     return user_id_ints[userid]
-
 
 business_id_ints = dict()
 for value, key in enumerate(df['item'].unique()):

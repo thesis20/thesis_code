@@ -1,8 +1,8 @@
 import pandas as pd
 
-train = pd.read_csv('train.txt', sep=',', )
-test = pd.read_csv('test.txt', sep=',', )
-ratings = pd.read_csv('out.txt', sep=',', )
+train = pd.read_csv('Frappe/train.txt', sep=',', )
+test = pd.read_csv('Frappe/test.txt', sep=',', )
+ratings = pd.read_csv('Frappe/out.txt', sep=',', )
 train_items = train['item']
 test_items = test['item']
 all_items = ratings['item']
@@ -12,20 +12,20 @@ ratings.drop('item', inplace=True, axis=1)
 
 n_items = all_items.nunique()
  
-one_hot_length = 1297
-user_offset = 957
-daytime_offset = 7
-weekday_offset = 7
-isweekend_offset = 2
-cost_offset = 2
-weather_offset = 9
-country_offset = 80
-city_offset = 233
+
+user_offset = ratings['user'].nunique()
+daytime_offset = ratings['timeofday'].nunique()
+weekday_offset = ratings['weekday'].nunique()
+isweekend_offset = ratings['isweekend'].nunique()
+cost_offset = ratings['cost'].nunique()
+weather_offset = ratings['weather'].nunique()
+country_offset = ratings['country'].nunique()
+city_offset = ratings['city'].nunique()
 all_offsets = [user_offset,weekday_offset,isweekend_offset,cost_offset,weather_offset,country_offset,city_offset, daytime_offset]
+one_hot_length = sum(all_offsets)
 
 def create_city_dict():
     cities = ratings['city'].unique()
-    n_cities = ratings['city'].nunique()
     city_onehot_dict = {}
     i = 0
 
@@ -65,3 +65,9 @@ for i, row in test.iterrows():
     cfm_string = (",".join(str(x) for x in one_hot_indices_user)).replace(',', '-')
     cfm_string = cfm_string + ',' + str(train_items[i]) + '-' + str(n_items) 
     cfm_test.append(cfm_string)
+
+cfm_train_df = pd.DataFrame(cfm_train)
+cfm_test_df = pd.DataFrame(cfm_train)
+
+cfm_train_df.to_csv('train.csv', index=False)
+cfm_test_df.to_csv('test.csv', index=False)

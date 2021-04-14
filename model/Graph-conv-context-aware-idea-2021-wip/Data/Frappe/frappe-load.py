@@ -76,7 +76,6 @@ def convert_cost_to_int(cost):
 
 def create_country_dict():
     countries = ratings['country'].unique()
-    n_countries = ratings['country'].nunique()
     country_dict = {}
     i = 0
 
@@ -89,8 +88,6 @@ def create_country_dict():
 def convert_country_to_int(country, country_dict):
     return country_dict[country] 
 
-
-print(ratings['cnt'].nunique())
 
 ratings['timeofday'] = ratings['daytime'].apply(lambda x: convert_daytime_to_timeofday(x))
 ratings['weekday'] = ratings['weekday'].apply(lambda x: convert_weekday_to_int(x))
@@ -119,6 +116,7 @@ joined.drop('short desc', inplace=True, axis=1)
 joined.drop('rating', inplace=True, axis=1)
 
 
+#Ensures that the dataset is filtered such that users have interacted with 10 items
 orig_len = len(joined)
 print(f"DF before filter: {orig_len}")
 joined = joined.groupby('user').filter(lambda x: len(x) > 10)
@@ -151,14 +149,8 @@ while not saved:
 
     if test_users.issubset(train_users) and test_items.issubset(train_items):
         joined.to_csv('out.txt', index=False)
-        train.to_csv('file_root + ''train.txt', index=False)
+        train.to_csv('train.txt', index=False)
         test.to_csv('test.txt', index=False)
         break
     else:
         seed += 1
-
-#joined.to_csv('out.txt', index=False, sep=',')
-#train, test = train_test_split(joined, test_size=0.2)
-
-#train.to_csv('train.txt', index=False, sep=',')
-#test.to_csv('test.txt', index=False, sep=',')
