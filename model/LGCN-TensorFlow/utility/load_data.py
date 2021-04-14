@@ -12,42 +12,64 @@ from time import time
 import pandas as pd
 
 class Data(object):
-    def __init__(self, path, batch_size):
+    def __init__(self, path, alg_type, batch_size):
         self.path = path
         self.batch_size = batch_size
         self.loo_eval = False
+        self.alg_type = alg_type
+
+        if 'ml100k' in self.path:
+            self.user_column_name = 'userId'
+            self.item_column_name = 'movieId'
+            self.context_column_list = ['timeofday', 'weekday']
+
+        if 'yelpnc' in self.path:
+            self.user_column_name = 'user_id'
+            self.item_column_name = 'business_id'
+            self.context_column_list = ['yelping_since', 'average_stars']
+
+
 
         if self.loo_eval:
             self.init_loo_split()
         else:
             self.init_train_test_split()
+        self.test_context_combinations = self.get_test_context_combinations()
 
+    def get_test_context_combinations(self):
+        # get the unique context combinations in the test set
+        combinations = set()
+
+        for _, row in self.test_df.iterrows():
+            context_list = []
+            for context in self.context_column_list:
+                context_list.append(self.context_offset_dict[context + str(row[context])])
+            combinations.add(tuple(context_list))
+        return combinations
 
     def init_loo_split(self):
-        full_file = self.path + '/full.txt'
+        full_file = self.path + '/out.txt'
 
-        self.n_users, self.n_items = 0, 0
+        self.n_users, self.n_items, self.n_contexts = 0, 0, 0
         self.n_train, self.n_test = 0, 0
         self.neg_pools = {}
 
-        self.exist_users_train = []
-        self.exist_users_test = []
+        self.exist_users = []
 
         self.full_df = pd.read_csv(full_file)
         reverse_full_df = self.full_df[::-1]
         self.train_df = self.full_df
 
-        # TODO: Refactor så movieId er itemID?
-        self.n_items = self.full_df['movieId'].nunique()
-        self.n_users = self.full_df['userId'].nunique()
-        self.unique_users = self.full_df['userId'].unique()
+        self.n_items = self.full_df[self.item_column_name].max()
+        self.n_users = self.full_df[self.user_column_name].max()
+        self.unique_users = self.full_df[self.user_column_name].unique()
         loo_interactions = []
         #count = 0
         for userid in self.unique_users:
             #if count == 20:
                # break
             for index, row in reverse_full_df.iterrows():
-                if row['userId'] == userid:
+                if row[self.user_column_name] == userid:
                     loo_interactions.append(row)
                     self.train_df.drop(index, inplace=True)
                     break
@@ -59,73 +81,106 @@ class Data(object):
         print(self.train_df.shape)
         self.create_positive_interactions()
         
-    
+
     def init_train_test_split(self):
         train_file = self.path + '/train.txt'
         test_file = self.path + '/test.txt'
 
-        self.n_users, self.n_items = 0, 0
+        self.n_users, self.n_items, self.n_contexts = 0, 0, 0
         self.n_train, self.n_test = 0, 0
         self.neg_pools = {}
 
-        self.exist_users_train = []
-        self.exist_users_test = []
-        
-        # self.n_items = total antal items
-        # self.n_users = total antal users
-        # self.n_train = antal interactions i train data
-        # self.exist_users er liste med user ids
-        # self.n_test = antal interactions in test data
+        self.exist_users = []
+
         self.train_df = pd.read_csv(train_file)
         self.test_df = pd.read_csv(test_file)
         self.full_df = self.train_df.append(self.test_df)
-        
-        # TODO: Refactor så movieId er itemID?
-        self.n_items = self.full_df['movieId'].nunique()
-        self.n_users = self.full_df['userId'].nunique()
+
+        self.n_items = self.full_df[self.item_column_name].max()
+        self.n_users = self.full_df[self.user_column_name].max()
+        self.n_contexts = sum([self.full_df[context].nunique() for context in self.context_column_list])
 
         self.create_positive_interactions()
-        
+
 
     def create_positive_interactions(self):
-        # dictionaries mapping item and user id from full dataset to an index
-        self.item_id_to_index = {k: v for v, k in enumerate(self.full_df['movieId'].unique())}
-        self.user_id_to_index = {k: v for v, k in enumerate(self.full_df['userId'].unique())}
-        self.exist_users_train = self.train_df['userId'].unique()
-        self.exist_users_test = self.test_df['userId'].unique()
+        self.exist_users = self.full_df[self.user_column_name].unique()
         self.n_train = len(self.train_df.index)
         self.n_test = len(self.test_df.index)
-        
-        # TODO: Skal her tælles en op?
+
+        context_offset_dict = {}
+        item_context_offset_dict = {}
+
+        offset = 0
+        for column in self.context_column_list:
+            for value in self.full_df[column].unique():
+                context_offset_dict[column + str(value)] = offset
+                offset += 1
+
+        offset = 0
+        for _, value in enumerate(self.full_df[self.item_column_name].unique()):
+            for context in context_offset_dict.keys():
+                item_context_offset_dict[(value, context)] = offset
+                offset += 1
+
+        self.context_offset_dict = context_offset_dict
+        self.item_context_offset_dict = item_context_offset_dict
+
         self.n_items += 1
         self.n_users += 1
         self.print_statistics()
         self.R = sp.dok_matrix((self.n_users, self.n_items), dtype=np.float32)
-        
+
         self.train_items, self.test_set = {}, {}
         # Key: userID || value: list of positive interactions
         # self.R: [uid, i] = 1 for hver interaction
-        
+
         for _, row in self.train_df.iterrows():
-            userId = row['userId']
-            movieId = row['movieId']
-            self.R[
-                self.user_id_to_index[userId],
-                self.item_id_to_index[movieId]
-                ] = 1
-            if userId not in self.train_items:
-                self.train_items[userId] = [movieId]
+            userId = row[self.user_column_name]
+            movieId = row[self.item_column_name]
+            self.R[userId, movieId] = 1.
+
+
+            if self.alg_type in ['csgcn']:
+                pos_interaction = (row[self.item_column_name],)
+                contexts = tuple()
+                for context in self.context_column_list:
+                    contexts = contexts + (row[context],)
+                pos_interaction = pos_interaction + (contexts,)
+
+                # TODO Tjek om train_items er ens med LGCN koden
+                if userId not in self.train_items:
+                    self.train_items[userId] = [pos_interaction]
+                else:
+                    self.train_items[userId].append(pos_interaction)
             else:
-                self.train_items[userId].append(movieId)
-                
+                if userId not in self.train_items:
+                    self.train_items[userId] = [movieId]
+                else:
+                    self.train_items[userId].append(movieId)
+
         for _, row in self.test_df.iterrows():
-            userId = row['userId']
-            movieId = row['movieId']
-            if userId not in self.test_set:
-                self.test_set[userId] = [movieId]
+            userId = row[self.user_column_name]
+            movieId = row[self.item_column_name]
+
+            if self.alg_type in ['csgcn']:
+                pos_interaction = (row[self.item_column_name],)
+                contexts = tuple()
+
+                for context in self.context_column_list:
+                    contexts = contexts + (row[context],)
+                pos_interaction = pos_interaction + (contexts,)
+
+                if userId not in self.test_set:
+                    self.test_set[userId] = [pos_interaction]
+                else:
+                    self.test_set[userId].append(pos_interaction)
             else:
-                self.test_set[userId].append(movieId)
-            
+                if userId not in self.test_set:
+                    self.test_set[userId] = [movieId]
+                else:
+                    self.test_set[userId].append(movieId)
+
 
     def get_adj_mat(self):
         try:
@@ -208,9 +263,9 @@ class Data(object):
 
     def sample(self):
         if self.batch_size <= self.n_users:
-            users = rd.sample(population=list(self.exist_users_train), k=self.batch_size)
+            users = rd.sample(list(self.exist_users), self.batch_size)
         else:
-            users = [rd.choice(self.exist_users_train) for _ in range(self.batch_size)]
+            users = [rd.choice(self.exist_users) for _ in range(self.batch_size)]
 
 
         def sample_pos_items_for_u(u, num):
@@ -231,28 +286,53 @@ class Data(object):
             while True:
                 if len(neg_items) == num: break
                 neg_id = np.random.randint(low=0, high=self.n_items,size=1)[0]
-                if neg_id not in self.train_items[u] and neg_id not in neg_items:
-                    neg_items.append(neg_id)
+
+                # TODO: Tjek om den her list comprehension virker som forventet
+                if self.alg_type in ['csgcn']:
+                    if neg_id not in [itemId for itemId,_ in self.train_items[u]] and neg_id not in neg_items:
+                        neg_items.append(neg_id)
+                else:
+                    if neg_id not in self.train_items[u] and neg_id not in neg_items:
+                        neg_items.append(neg_id)
             return neg_items
 
         def sample_neg_items_for_u_from_pools(u, num):
             neg_items = list(set(self.neg_pools[u]) - set(self.train_items[u]))
             return rd.sample(neg_items, num)
 
-        pos_items, neg_items = [], []
+        pos_items, neg_items, pos_items_context, neg_items_context = [], [], [], []
         for u in users:
-            pos_items += sample_pos_items_for_u(u, 1)
-            neg_items += sample_neg_items_for_u(u, 1)
+            #TODO:  Context her er (1,5) skal det ikke være (timeofday1, dayofweek5)?
+            if self.alg_type in ['csgcn']:
+                pos_item_id, context = sample_pos_items_for_u(u, 1)[0]
+                neg_item_id = sample_neg_items_for_u(u, 1)[0]
+                pos_items.append(pos_item_id)
+                neg_items.append(neg_item_id)
 
-        return users, pos_items, neg_items
-    
+                pos_item_context, neg_item_context = [], []
+                for index, context_col in enumerate(self.context_column_list, 0):
+                    pos_item_context.append(self.item_context_offset_dict[(pos_item_id, context_col + str(context[index]))])
+                    neg_item_context.append(self.item_context_offset_dict[(neg_item_id, context_col + str(context[index]))])
+
+                pos_items_context.append(pos_item_context)
+                neg_items_context.append(neg_item_context)
+            else:
+                pos_items += sample_pos_items_for_u(u, 1)
+                neg_items += sample_neg_items_for_u(u, 1)
+
+        if self.alg_type in ['csgcn']:
+            return users, pos_items, neg_items, pos_items_context, neg_items_context
+        else:
+            return users, pos_items, neg_items
+
     def sample_test(self):
         if self.batch_size <= self.n_users:
             users = rd.sample(self.test_set.keys(), self.batch_size)
         else:
-            users = [rd.choice(self.exist_users_test) for _ in range(self.batch_size)]
+            users = [rd.choice(self.exist_users) for _ in range(self.batch_size)]
 
         def sample_pos_items_for_u(u, num):
+            # TODO Er her context med? Skal context ikke være ('timeofday1', 'dayofweek5')? Det er (1,5)
             pos_items = self.test_set[u]
             n_pos_items = len(pos_items)
             pos_batch = []
@@ -270,24 +350,45 @@ class Data(object):
             while True:
                 if len(neg_items) == num: break
                 neg_id = np.random.randint(low=0, high=self.n_items, size=1)[0]
-                if neg_id not in (self.test_set[u]+self.train_items[u]) and neg_id not in neg_items:
-                    neg_items.append(neg_id)
+                if self.alg_type in ['csgcn']:
+                    if neg_id not in [itemId for itemId,_ in (self.test_set[u]+self.train_items[u])] and neg_id not in neg_items:
+                        neg_items.append(neg_id)
+                else:
+                    if neg_id not in (self.test_set[u]+self.train_items[u]) and neg_id not in neg_items:
+                        neg_items.append(neg_id)
             return neg_items
     
         def sample_neg_items_for_u_from_pools(u, num):
             neg_items = list(set(self.neg_pools[u]) - set(self.train_items[u]))
             return rd.sample(neg_items, num)
 
-        pos_items, neg_items = [], []
         for u in users:
-            pos_items += sample_pos_items_for_u(u, 1)
-            neg_items += sample_neg_items_for_u(u, 1)
+            pos_items, neg_items = [], []
+            if self.alg_type in ['csgcn']:
+                pos_items_context, neg_items_context = [], []
+                pos_item_id, context = sample_pos_items_for_u(u, 1)[0]
+                neg_item_id = sample_neg_items_for_u(u, 1)[0]
+                pos_items.append(pos_item_id)
+                neg_items.append(neg_item_id)
 
-        return users, pos_items, neg_items
-    
-    
-    
-    
+                pos_item_context, neg_item_context = [], []
+                for index, context_col in enumerate(self.context_column_list, 0):
+                    pos_item_context.append(
+                        self.item_context_offset_dict[(pos_item_id, context_col + str(context[index]))])
+                    neg_item_context.append(
+                        self.item_context_offset_dict[(neg_item_id, context_col + str(context[index]))])
+
+                pos_items_context.append(pos_item_context)
+                neg_items_context.append(neg_item_context)
+            else:
+                pos_items += sample_pos_items_for_u(u, 1)
+                neg_items += sample_neg_items_for_u(u, 1)
+
+        if self.alg_type in ['csgcn']:
+            return users, pos_items, neg_items, pos_items_context, neg_items_context
+        else:
+            return users, pos_items, neg_items
+
     
     
     def get_num_users_items(self):
@@ -297,6 +398,9 @@ class Data(object):
         print('n_users=%d, n_items=%d' % (self.n_users, self.n_items))
         print('n_interactions=%d' % (self.n_train + self.n_test))
         print('n_train=%d, n_test=%d, sparsity=%.5f' % (self.n_train, self.n_test, (self.n_train + self.n_test)/(self.n_users * self.n_items)))
+
+        if self.batch_size != self.n_users // 10:
+            print(f"!! Wrong batch size, you have {self.batch_size}, consider {self.n_users // 10} !!")
 
 
     def get_sparsity_split(self):
