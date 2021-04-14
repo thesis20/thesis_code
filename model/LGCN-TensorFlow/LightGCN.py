@@ -23,14 +23,14 @@ class LightGCN(object):
     def __init__(self, data_config, pretrain_data):
         # argument settings
         self.model_type = 'LightGCN'
-        self.model_data = data_generator
         self.adj_type = args.adj_type
         self.alg_type = args.alg_type
         self.pretrain_data = pretrain_data
         self.n_users = data_config['n_users']
         self.n_items = data_config['n_items']
-        self.n_contexts = data_config['n_contexts']
-        self.n_fold = 1
+        if self.alg_type in ['csgcn']:
+            self.n_contexts = data_config['n_contexts']
+        self.n_fold = 100
         self.norm_adj = data_config['norm_adj']
         self.n_nonzero_elems = self.norm_adj.count_nonzero()
         self.lr = args.lr
@@ -53,10 +53,11 @@ class LightGCN(object):
         self.users = tf.placeholder(tf.int32, shape=(None,))
         self.pos_items = tf.placeholder(tf.int32, shape=(None,))
         self.neg_items = tf.placeholder(tf.int32, shape=(None,))
-        self.pos_items_context = tf.placeholder(tf.int32, shape=(None,None))
-        self.neg_items_context = tf.placeholder(tf.int32, shape=(None,None))
-        
 
+        if self.alg_type in ['csgcn']:
+            self.pos_items_context = tf.placeholder(tf.int32, shape=(None, None))
+            self.neg_items_context = tf.placeholder(tf.int32, shape=(None, None))
+        
         self.node_dropout_flag = args.node_dropout_flag
         self.node_dropout = tf.placeholder(tf.float32, shape=[None])
         self.mess_dropout = tf.placeholder(tf.float32, shape=[None])
@@ -79,10 +80,6 @@ class LightGCN(object):
             self.train_rec_last = tf.placeholder(tf.float32)
             #record for top(Ks[-1])
             tf.summary.scalar('train_rec_last', self.train_rec_last)
-            self.train_hit_first = tf.placeholder(tf.float32)
-            tf.summary.scalar('train_hit_first', self.train_hit_first)
-            self.train_hit_last = tf.placeholder(tf.float32)
-            tf.summary.scalar('train_hit_last', self.train_hit_last)
             self.train_ndcg_first = tf.placeholder(tf.float32)
             tf.summary.scalar('train_ndcg_first', self.train_ndcg_first)
             self.train_ndcg_last = tf.placeholder(tf.float32)
@@ -103,12 +100,8 @@ class LightGCN(object):
         with tf.name_scope('TEST_ACC'):
             self.test_rec_first = tf.placeholder(tf.float32)
             tf.summary.scalar('test_rec_first', self.test_rec_first)
-            self.test_hit_first = tf.placeholder(tf.float32)
-            tf.summary.scalar('test_hit_first', self.test_hit_first)
             self.test_rec_last = tf.placeholder(tf.float32)
             tf.summary.scalar('test_rec_last', self.test_rec_last)
-            self.test_hit_last = tf.placeholder(tf.float32)
-            tf.summary.scalar('test_hit_last', self.test_hit_last)
             self.test_ndcg_first = tf.placeholder(tf.float32)
             tf.summary.scalar('test_ndcg_first', self.test_ndcg_first)
             self.test_ndcg_last = tf.placeholder(tf.float32)
@@ -151,17 +144,19 @@ class LightGCN(object):
         self.u_g_embeddings_pre = tf.nn.embedding_lookup(self.weights['user_embedding'], self.users)
         self.pos_i_g_embeddings_pre = tf.nn.embedding_lookup(self.weights['item_embedding'], self.pos_items)
         self.neg_i_g_embeddings_pre = tf.nn.embedding_lookup(self.weights['item_embedding'], self.neg_items)
-        self.pos_item_context_pre = tf.nn.embedding_lookup(self.weights['item_context_embedding'], self.pos_items_context)
-        self.neg_item_context_pre = tf.nn.embedding_lookup(self.weights['item_context_embedding'], self.neg_items_context)
+
+        if self.alg_type in ['csgcn']:
+            self.pos_item_context_pre = tf.nn.embedding_lookup(self.weights['item_context_embedding'], self.pos_items_context)
+            self.neg_item_context_pre = tf.nn.embedding_lookup(self.weights['item_context_embedding'], self.neg_items_context)
+            self.pos_item_context_pre = tf.reduce_mean(self.pos_item_context_pre, axis=1)
+            self.neg_item_context_pre = tf.reduce_mean(self.neg_item_context_pre, axis=1)
 
         """
         *********************************************************
         Inference for the testing phase.
         """
-
         if self.alg_type in ['csgcn']:
-            pos_item_context_pre_mean = tf.reduce_mean(self.pos_item_context_pre, axis=1)
-            self.pos_i_g_c_embeddings = tf.add(pos_item_context_pre_mean, self.pos_i_g_embeddings)
+            self.pos_i_g_c_embeddings = tf.add(self.pos_item_context_pre, self.pos_i_g_embeddings)
             self.batch_ratings = tf.matmul(self.u_g_embeddings, self.pos_i_g_c_embeddings, transpose_a=False, transpose_b=True)
         else:
             self.batch_ratings = tf.matmul(self.u_g_embeddings, self.pos_i_g_embeddings, transpose_a=False, transpose_b=True)
@@ -172,12 +167,12 @@ class LightGCN(object):
         """
         if self.alg_type in ['csgcn']:
             self.mf_loss, self.emb_loss, self.reg_loss = self.create_bpr_loss_csgcn(self.u_g_embeddings,
-                                                                                    self.pos_i_g_embeddings,
-                                                                                    self.neg_i_g_embeddings)
+                                                                            self.pos_i_g_embeddings,
+                                                                            self.neg_i_g_embeddings)
         else:
             self.mf_loss, self.emb_loss, self.reg_loss = self.create_bpr_loss(self.u_g_embeddings,
-                                                                                self.pos_i_g_embeddings,
-                                                                                self.neg_i_g_embeddings)
+                                                                            self.pos_i_g_embeddings,
+                                                                            self.neg_i_g_embeddings)
         self.loss = self.mf_loss + self.emb_loss
 
         self.opt = tf.train.AdamOptimizer(learning_rate=self.lr).minimize(self.loss)
@@ -195,14 +190,17 @@ class LightGCN(object):
         if self.pretrain_data is None:
             all_weights['user_embedding'] = tf.Variable(initializer([self.n_users, self.emb_dim]), name='user_embedding')
             all_weights['item_embedding'] = tf.Variable(initializer([self.n_items, self.emb_dim]), name='item_embedding')
-            all_weights['item_context_embedding'] = tf.Variable(initializer([self.n_items*self.n_contexts, self.emb_dim]), name='item_context_embedding')
+            if self.alg_type in ['csgcn']:
+                all_weights['item_context_embedding'] = tf.Variable(initializer([self.n_items*self.n_contexts, self.emb_dim]), name='item_context_embedding')
             print('using random initialization')#print('using xavier initialization')
         else:
             all_weights['user_embedding'] = tf.Variable(initial_value=self.pretrain_data['user_embed'], trainable=True,
                                                         name='user_embedding', dtype=tf.float32)
             all_weights['item_embedding'] = tf.Variable(initial_value=self.pretrain_data['item_embed'], trainable=True,
                                                         name='item_embedding', dtype=tf.float32)
-            all_weights['item_context_embedding'] = tf.Variable(initial_value=self.pretrain_data['item_context_embed'], trainable=True, name='item_context_embedding', dtype=tf.float32)
+            if self.alg_type in ['csgcn']:
+                all_weights['item_context_embedding'] = tf.Variable(initial_value=self.pretrain_data['item_context_embed'], trainable=True,
+                                                        name='item_context_embedding', dtype=tf.float32)
             print('using pretrained initialization')
             
         self.weight_size_list = [self.emb_dim] + self.weight_size
@@ -265,6 +263,7 @@ class LightGCN(object):
         all_embeddings = [ego_embeddings]
         
         for k in range(0, self.n_layers):
+
             temp_embed = []
             for f in range(self.n_fold):
                 temp_embed.append(tf.sparse_tensor_dense_matmul(A_fold_hat[f], ego_embeddings))
@@ -365,20 +364,14 @@ class LightGCN(object):
         return u_g_embeddings, i_g_embeddings
 
     def create_bpr_loss_csgcn(self, users, pos_items, neg_items):
-        pos_item_context_pre_mean = tf.reduce_mean(self.pos_item_context_pre, axis=1)
-        neg_item_context_pre_mean = tf.reduce_mean(self.neg_item_context_pre, axis=1)
-        pos_items_context = tf.add(pos_items, pos_item_context_pre_mean)
-        neg_items_context = tf.add(neg_items, neg_item_context_pre_mean)
+        pos_items = tf.add(pos_items, self.pos_item_context_pre)
+        neg_items = tf.add(neg_items, self.neg_item_context_pre)
+        pos_scores = tf.reduce_sum(tf.multiply(users, pos_items), axis=1)
+        neg_scores = tf.reduce_sum(tf.multiply(users, neg_items), axis=1)
 
-        pos_scores = tf.reduce_sum(tf.multiply(users, pos_items_context), axis=1)
-        neg_scores = tf.reduce_sum(tf.multiply(users, neg_items_context), axis=1)
-
-        # TODO Overvej context regularizer
-        regularizer = tf.nn.l2_loss(self.u_g_embeddings_pre) \
-                + tf.nn.l2_loss(self.pos_i_g_embeddings_pre) \
-                + tf.nn.l2_loss(self.neg_i_g_embeddings_pre) \
-                + tf.nn.l2_loss(self.pos_item_context_pre) \
-                + tf.nn.l2_loss(self.neg_item_context_pre)
+        regularizer = tf.nn.l2_loss(self.u_g_embeddings_pre) + tf.nn.l2_loss(
+                    self.pos_i_g_embeddings_pre) + tf.nn.l2_loss(self.neg_i_g_embeddings_pre) \
+                    + tf.nn.l2_loss(self.pos_item_context_pre) + tf.nn.l2_loss(self.neg_item_context_pre)
         regularizer = regularizer / self.batch_size
 
         mf_loss = tf.reduce_mean(tf.nn.softplus(-(pos_scores - neg_scores)))
@@ -433,110 +426,6 @@ def load_pretrained_data():
         pretrain_data = None
     return pretrain_data
 
-def test_pretrained_model():
-    if model.model_data.loo_eval:
-        sess.run(tf.global_variables_initializer())
-        saver.restore(sess, ckpt.model_checkpoint_path)
-        print('load the pretrained model parameters from: ', pretrain_path)
-
-        # *********************************************************
-        # get the performance from pretrained model.
-        if args.report != 1:
-            users_to_test = list(data_generator.test_set.keys())
-            ret = test(sess, model, users_to_test, drop_flag=True)
-            cur_best_pre_0 = ret['hit'][0]
-                    
-            pretrain_ret = 'pretrained model hit rate=[%s], ndcg=[%s], '\
-                            'mrr=[%s]' % \
-                            (', '.join(['%.5f' % r for r in ret['hit']]),
-                            ', '.join(['%.5f' % r for r in ret['ndcg']]),
-                            ', '.join(['%.5f' % r for r in ret['mrr']]))
-            print(pretrain_ret)
-    else:
-        sess.run(tf.global_variables_initializer())
-        saver.restore(sess, ckpt.model_checkpoint_path)
-        print('load the pretrained model parameters from: ', pretrain_path)
-
-        # *********************************************************
-        # get the performance from pretrained model.
-        if args.report != 1:
-            users_to_test = list(data_generator.test_set.keys())
-            ret = test(sess, model, users_to_test, drop_flag=True)
-            cur_best_pre_0 = ret['recall'][0]
-                    
-            pretrain_ret = 'pretrained model recall=[%s], precision=[%s], '\
-                            'ndcg=[%s]' % \
-                            (', '.join(['%.5f' % r for r in ret['recall']]),
-                            ', '.join(['%.5f' % r for r in ret['precision']]),
-                            ', '.join(['%.5f' % r for r in ret['ndcg']]))
-            print(pretrain_ret)
-
-def test_performance(sess, model, users_to_test, drop_flag):
-    if model.model_data.loo_eval:
-        ret = test_loo(sess, model, users_to_test, drop_flag)
-        final_perf = "hit rate=[%s], ndcg=[%s], mrr=[%s]" % \
-            (', '.join(['%.5f' % r for r in ret['hit']]),
-            ', '.join(['%.5f' % r for r in ret['ndcg']]),
-            ', '.join(['%.5f' % r for r in ret['mrr']]))
-    else:
-        ret = test(sess, model, users_to_test, drop_flag)
-
-        final_perf = "recall=[%s], precision=[%s], ndcg=[%s]" % \
-            (', '.join(['%.5f' % r for r in ret['recall']]),
-            ', '.join(['%.5f' % r for r in ret['precision']]),
-            ', '.join(['%.5f' % r for r in ret['ndcg']]))
-
-    return final_perf
-
-def train_testing(sess, model, users_to_test, drop_flag, train_set_flag):
-    if model.model_data.loo_eval:
-        ret = test_loo(sess, model, users_to_test ,drop_flag, train_set_flag)
-        perf_str = 'Epoch %d: train==[%.5f=%.5f + %.5f + %.5f], hit rate=[%s], ndcg=[%s], mrr=[%s]' % \
-                (epoch, loss, mf_loss, emb_loss, reg_loss, 
-                    ', '.join(['%.5f' % r for r in ret['hit']]),
-                    ', '.join(['%.5f' % r for r in ret['ndcg']]),
-                    ', '.join(['%.5f' % r for r in ret['mrr']]))
-        print(perf_str)
-        summary_train_acc = sess.run(model.merged_train_acc, feed_dict={model.train_hit_first: ret['hit'][0],
-                                                                        model.train_hit_last: ret['hit'][-1],
-                                                                        model.train_rec_first: 0,
-                                                                        model.train_rec_last: 0,
-                                                                        model.train_ndcg_first: ret['ndcg'][0],
-                                                                        model.train_ndcg_last: ret['ndcg'][-1]})
-    else:
-        ret = test(sess, model, users_to_test ,drop_flag, train_set_flag)
-        perf_str = 'Epoch %d: train==[%.5f=%.5f + %.5f + %.5f], recall=[%s], precision=[%s], ndcg=[%s]' % \
-                (epoch, loss, mf_loss, emb_loss, reg_loss, 
-                    ', '.join(['%.5f' % r for r in ret['recall']]),
-                    ', '.join(['%.5f' % r for r in ret['precision']]),
-                    ', '.join(['%.5f' % r for r in ret['ndcg']]))
-        print(perf_str)
-        summary_train_acc = sess.run(model.merged_train_acc, feed_dict={model.train_rec_first: ret['recall'][0],
-                                                                        model.train_rec_last: ret['recall'][-1],
-                                                                        model.train_hit_first: 0,
-                                                                        model.train_hit_last: 0,
-                                                                        model.train_ndcg_first: ret['ndcg'][0],
-                                                                        model.train_ndcg_last: ret['ndcg'][-1]})
-    
-    return ret, summary_train_acc
-
-def test_testing(sess, model, users_to_test, drop_flag):
-    if model.model_data.loo_eval:
-        ret = test_loo(sess, model, users_to_test, drop_flag)
-        summary_test_acc = sess.run(model.merged_test_acc,
-                                feed_dict={model.test_hit_first: ret['hit'][0], model.test_hit_last: ret['hit'][-1],
-                                            model.test_rec_first: 0,
-                                            model.test_rec_last: 0,
-                                            model.test_ndcg_first: ret['ndcg'][0], model.test_ndcg_last: ret['ndcg'][-1]})
-    else:
-        ret = test(sess, model, users_to_test, drop_flag)
-        summary_test_acc = sess.run(model.merged_test_acc,
-                                    feed_dict={model.test_rec_first: ret['recall'][0], model.test_rec_last: ret['recall'][-1],
-                                                model.test_hit_first: 0,
-                                                model.test_hit_last: 0,
-                                                model.test_ndcg_first: ret['ndcg'][0], model.test_ndcg_last: ret['ndcg'][-1]})
-    return ret, summary_test_acc
-
 # parallelized sampling on CPU 
 class sample_thread(threading.Thread):
     def __init__(self):
@@ -559,22 +448,21 @@ class train_thread(threading.Thread):
         self.model = model
         self.sess = sess
         self.sample = sample
-
     def run(self):
-        users, pos_items, neg_items, pos_items_context, neg_items_context = self.sample.data
+
         if self.model.alg_type in ['csgcn']:
+            users, pos_items, neg_items, pos_items_context, neg_items_context = self.sample.data
             self.data = sess.run([self.model.opt, self.model.loss, self.model.mf_loss, self.model.emb_loss, self.model.reg_loss],
-                                    feed_dict={model.users: users,
-                                                model.pos_items: pos_items,
-                                                model.pos_items_context: pos_items_context,
-                                                model.neg_items_context: neg_items_context,
+                                    feed_dict={model.users: users, model.pos_items: pos_items,
                                                 model.node_dropout: eval(args.node_dropout),
                                                 model.mess_dropout: eval(args.mess_dropout),
-                                                model.neg_items: neg_items})
+                                                model.neg_items: neg_items,
+                                                model.pos_items_context: pos_items_context,
+                                                model.neg_items_context: neg_items_context})
         else:
+            users, pos_items, neg_items = self.sample.data
             self.data = sess.run([self.model.opt, self.model.loss, self.model.mf_loss, self.model.emb_loss, self.model.reg_loss],
-                                    feed_dict={model.users: users,
-                                                model.pos_items: pos_items,
+                                    feed_dict={model.users: users, model.pos_items: pos_items,
                                                 model.node_dropout: eval(args.node_dropout),
                                                 model.mess_dropout: eval(args.mess_dropout),
                                                 model.neg_items: neg_items})
@@ -587,11 +475,19 @@ class train_thread_test(threading.Thread):
         self.sample = sample
 
     def run(self):
-        users, pos_items, neg_items, pos_items_context, neg_items_context = self.sample.data
-        self.data = sess.run([self.model.loss, self.model.mf_loss, self.model.emb_loss],
-                                feed_dict={model.users: users, model.pos_items: pos_items,
+        if self.model.alg_type in ['csgcn']:
+            users, pos_items, neg_items, pos_items_context, neg_items_context = self.sample.data
+            self.data = sess.run([self.model.loss, self.model.mf_loss, self.model.emb_loss],
+                                    feed_dict={model.users: users, model.pos_items: pos_items,
+                                            model.neg_items: neg_items,
+                                            model.node_dropout: eval(args.node_dropout),
+                                            model.mess_dropout: eval(args.mess_dropout),
                                             model.pos_items_context: pos_items_context,
-                                            model.neg_items_context: neg_items_context,
+                                            model.neg_items_context: neg_items_context})
+        else:
+            users, pos_items, neg_items = self.sample.data
+            self.data = sess.run([self.model.loss, self.model.mf_loss, self.model.emb_loss],
+                                    feed_dict={model.users: users, model.pos_items: pos_items,
                                             model.neg_items: neg_items,
                                             model.node_dropout: eval(args.node_dropout),
                                             model.mess_dropout: eval(args.mess_dropout)})
@@ -603,7 +499,8 @@ if __name__ == '__main__':
     config = dict()
     config['n_users'] = data_generator.n_users
     config['n_items'] = data_generator.n_items
-    config['n_contexts'] = data_generator.n_contexts
+    if args.alg_type in ['csgcn']:
+        config['n_contexts'] = data_generator.n_contexts
 
     """
     *********************************************************
@@ -662,7 +559,23 @@ if __name__ == '__main__':
 
         ckpt = tf.train.get_checkpoint_state(os.path.dirname(pretrain_path + '/checkpoint'))
         if ckpt and ckpt.model_checkpoint_path:
-            test_pretrained_model()          
+            sess.run(tf.global_variables_initializer())
+            saver.restore(sess, ckpt.model_checkpoint_path)
+            print('load the pretrained model parameters from: ', pretrain_path)
+
+            # *********************************************************
+            # get the performance from pretrained model.
+            if args.report != 1:
+                users_to_test = list(data_generator.test_set.keys())
+                ret = test(sess, model, users_to_test, drop_flag=True)
+                cur_best_pre_0 = ret['recall'][0]
+                
+                pretrain_ret = 'pretrained model recall=[%s], precision=[%s], '\
+                               'ndcg=[%s]' % \
+                               (', '.join(['%.5f' % r for r in ret['recall']]),
+                                ', '.join(['%.5f' % r for r in ret['precision']]),
+                                ', '.join(['%.5f' % r for r in ret['ndcg']]))
+                print(pretrain_ret)
         else:
             sess.run(tf.global_variables_initializer())
             cur_best_pre_0 = 0.
@@ -691,8 +604,13 @@ if __name__ == '__main__':
             % (args.embed_size, args.lr, args.layer_size, args.keep_prob, args.regs, args.loss_type, args.adj_type))
 
         for i, users_to_test in enumerate(users_to_test_list):
-            final_perf = test_performance(sess, model, users_to_test, drop_flag=True)
-            
+            ret = test(sess, model, users_to_test, drop_flag=True)
+
+            final_perf = "recall=[%s], precision=[%s], ndcg=[%s]" % \
+                         (', '.join(['%.5f' % r for r in ret['recall']]),
+                          ', '.join(['%.5f' % r for r in ret['precision']]),
+                          ', '.join(['%.5f' % r for r in ret['ndcg']]))
+
             f.write('\t%s\n\t%s\n' % (split_state[i], final_perf))
         f.close()
         exit()
@@ -713,7 +631,7 @@ if __name__ == '__main__':
     train_writer = tf.summary.FileWriter(tensorboard_model_path +model.log_dir+ '/run_' + str(run_time), sess.graph)
     
     
-    loss_loger, pre_loger, rec_loger, ndcg_loger, hit_loger, mrr_loger = [], [], [], [], [], []
+    loss_loger, pre_loger, rec_loger, ndcg_loger, hit_loger = [], [], [], [], []
     stopping_step = 0
     should_stop = False
     
@@ -740,7 +658,11 @@ if __name__ == '__main__':
             sample_next.join()
             train_cur.join()
             
-            users, pos_items, neg_items, _, _ = sample_last.data
+            if model.alg_type in ['csgcn']:
+                users, pos_items, neg_items, _, _ = sample_last.data
+            else:
+                users, pos_items, neg_items = sample_last.data
+
             _, batch_loss, batch_mf_loss, batch_emb_loss, batch_reg_loss = train_cur.data
             sample_last = sample_next
         
@@ -763,8 +685,19 @@ if __name__ == '__main__':
                 print(perf_str)
             continue
         users_to_test = list(data_generator.train_items.keys())
-        ret, summary_train_acc = train_testing(sess, model, users_to_test, drop_flag=True, train_set_flag=1)
+        ret = test(sess, model, users_to_test ,drop_flag=True,train_set_flag=1)
+        perf_str = 'Epoch %d: train==[%.5f=%.5f + %.5f + %.5f], recall=[%s], precision=[%s], ndcg=[%s]' % \
+                   (epoch, loss, mf_loss, emb_loss, reg_loss, 
+                    ', '.join(['%.5f' % r for r in ret['recall']]),
+                    ', '.join(['%.5f' % r for r in ret['precision']]),
+                    ', '.join(['%.5f' % r for r in ret['ndcg']]))
+        print(perf_str)
+        summary_train_acc = sess.run(model.merged_train_acc, feed_dict={model.train_rec_first: ret['recall'][0],
+                                                                        model.train_rec_last: ret['recall'][-1],
+                                                                        model.train_ndcg_first: ret['ndcg'][0],
+                                                                        model.train_ndcg_last: ret['ndcg'][-1]})
         train_writer.add_summary(summary_train_acc, epoch // 20)
+        
         '''
         *********************************************************
         parallelized sampling
@@ -782,7 +715,10 @@ if __name__ == '__main__':
             sample_next.join()
             train_cur.join()
             
-            users, pos_items, neg_items, _, _ = sample_last.data
+            if model.alg_type in ['csgcn']:
+                users, pos_items, neg_items, _, _ = sample_last.data
+            else:
+                users, pos_items, neg_items = sample_last.data
             batch_loss_test, batch_mf_loss_test, batch_emb_loss_test = train_cur.data
             sample_last = sample_next
             
@@ -796,44 +732,31 @@ if __name__ == '__main__':
         train_writer.add_summary(summary_test_loss, epoch // 20)
         t2 = time()
         users_to_test = list(data_generator.test_set.keys())
-        ret, summary_test_acc = test_testing(sess, model, users_to_test, drop_flag=True)
-        
+        ret = test(sess, model, users_to_test, drop_flag=True)
+        summary_test_acc = sess.run(model.merged_test_acc,
+                                    feed_dict={model.test_rec_first: ret['recall'][0], model.test_rec_last: ret['recall'][-1],
+                                               model.test_ndcg_first: ret['ndcg'][0], model.test_ndcg_last: ret['ndcg'][-1]})
         train_writer.add_summary(summary_test_acc, epoch // 20)
                                                                                                  
                                                                                                  
         t3 = time()
-        loss_loger.append(loss)
         
-        if model.model_data.loo_eval:
-            hit_loger.append(ret['hit'])
-            ndcg_loger.append(ret['ndcg'])
-            mrr_loger.append(ret['mrr'])
-            if args.verbose > 0:
-                perf_str = 'Epoch %d [%.1fs + %.1fs]: test==[%.5f=%.5f + %.5f + %.5f], hit rate=[%s], ' \
-                        'ndcg=[%s], mrr=[%s]' % \
-                        (epoch, t2 - t1, t3 - t2, loss_test, mf_loss_test, emb_loss_test, reg_loss_test, 
-                            ', '.join(['%.5f' % r for r in ret['hit']]),
-                            ', '.join(['%.5f' % r for r in ret['ndcg']]),
-                            ', '.join(['%.5f' % r for r in ret['mrr']]))
+        loss_loger.append(loss)
+        rec_loger.append(ret['recall'])
+        pre_loger.append(ret['precision'])
+        ndcg_loger.append(ret['ndcg'])
+
+        if args.verbose > 0:
+            perf_str = 'Epoch %d [%.1fs + %.1fs]: test==[%.5f=%.5f + %.5f + %.5f], recall=[%s], ' \
+                       'precision=[%s], ndcg=[%s]' % \
+                       (epoch, t2 - t1, t3 - t2, loss_test, mf_loss_test, emb_loss_test, reg_loss_test, 
+                        ', '.join(['%.5f' % r for r in ret['recall']]),
+                        ', '.join(['%.5f' % r for r in ret['precision']]),
+                        ', '.join(['%.5f' % r for r in ret['ndcg']]))
             print(perf_str)
-                
-            cur_best_pre_0, stopping_step, should_stop = early_stopping(ret['hit'][0], cur_best_pre_0,
-                                                                        stopping_step, expected_order='acc', flag_step=5)
-        else:
-            rec_loger.append(ret['recall'])
-            pre_loger.append(ret['precision'])
-            ndcg_loger.append(ret['ndcg'])
-            if args.verbose > 0:
-                perf_str = 'Epoch %d [%.1fs + %.1fs]: test==[%.5f=%.5f + %.5f + %.5f], recall=[%s], ' \
-                        'precision=[%s], ndcg=[%s]' % \
-                        (epoch, t2 - t1, t3 - t2, loss_test, mf_loss_test, emb_loss_test, reg_loss_test, 
-                            ', '.join(['%.5f' % r for r in ret['recall']]),
-                            ', '.join(['%.5f' % r for r in ret['precision']]),
-                            ', '.join(['%.5f' % r for r in ret['ndcg']]))
-                print(perf_str)
-                
-            cur_best_pre_0, stopping_step, should_stop = early_stopping(ret['recall'][0], cur_best_pre_0,
-                                                                        stopping_step, expected_order='acc', flag_step=5)
+            
+        cur_best_pre_0, stopping_step, should_stop = early_stopping(ret['recall'][0], cur_best_pre_0,
+                                                                    stopping_step, expected_order='acc', flag_step=5)
 
         # *********************************************************
         # early stopping when cur_best_pre_0 is decreasing for ten successive steps.
@@ -842,33 +765,20 @@ if __name__ == '__main__':
 
         # *********************************************************
         # save the user & item embeddings for pretraining.
-        if model.model_data.loo_eval:
-            if ret['hit'][0] == cur_best_pre_0 and args.save_flag == 1:
-                save_saver.save(sess, weights_save_path + '/weights', global_step=epoch)
-                print('save the weights in path: ', weights_save_path)
-        else:
-            if ret['recall'][0] == cur_best_pre_0 and args.save_flag == 1:
-                save_saver.save(sess, weights_save_path + '/weights', global_step=epoch)
-                print('save the weights in path: ', weights_save_path)
+        if ret['recall'][0] == cur_best_pre_0 and args.save_flag == 1:
+            save_saver.save(sess, weights_save_path + '/weights', global_step=epoch)
+            print('save the weights in path: ', weights_save_path)
     recs = np.array(rec_loger)
     pres = np.array(pre_loger)
     ndcgs = np.array(ndcg_loger)
-    hits = np.array(hit_loger)
-    mrrs = np.array(mrr_loger)
 
     best_rec_0 = max(recs[:, 0])
     idx = list(recs[:, 0]).index(best_rec_0)
 
-    if model.model_data.loo_eval:
-        final_perf = "Best Iter=[%d]@[%.1f]\thit rate=[%s], ndcg=[%s], ret=[%s]" % \
-                    (idx, time() - t0, '\t'.join(['%.5f' % r for r in hits[idx]]),
-                    '\t'.join(['%.5f' % r for r in ndcgs[idx]]),
-                    '\t'.join(['%.5f' % r for r in mrrs[idx]]))
-    else:
-        final_perf = "Best Iter=[%d]@[%.1f]\trecall=[%s], precision=[%s], ndcg=[%s]" % \
-                    (idx, time() - t0, '\t'.join(['%.5f' % r for r in recs[idx]]),
-                    '\t'.join(['%.5f' % r for r in pres[idx]]),
-                    '\t'.join(['%.5f' % r for r in ndcgs[idx]]))
+    final_perf = "Best Iter=[%d]@[%.1f]\trecall=[%s], precision=[%s], ndcg=[%s]" % \
+                 (idx, time() - t0, '\t'.join(['%.5f' % r for r in recs[idx]]),
+                  '\t'.join(['%.5f' % r for r in pres[idx]]),
+                  '\t'.join(['%.5f' % r for r in ndcgs[idx]]))
     print(final_perf)
 
     save_path = '%soutput/%s/%s.result' % (args.proj_path, args.dataset, model.model_type)
@@ -880,4 +790,3 @@ if __name__ == '__main__':
         % (args.embed_size, args.lr, args.layer_size, args.node_dropout, args.mess_dropout, args.regs,
            args.adj_type, final_perf))
     f.close()
-
