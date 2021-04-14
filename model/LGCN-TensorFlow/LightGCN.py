@@ -242,15 +242,17 @@ class LightGCN(object):
     def _split_A_hat(self, X):
         A_fold_hat = []
 
-        csgcn_len = self.n_users + self.n_items + self.n_user_sideinfo + self.n_item_sideinfo
-        lgcn_len = self.n_users + self.n_items
+        if self.alg_type in ['csgcn']:
+            adj_size = self.n_users + self.n_items + self.n_user_sideinfo + self.n_item_sideinfo
+        else:
+            adj_size = self.n_users + self.n_items
 
-        fold_len = (csgcn_len // self.n_fold) if self.alg_type in ['csgcn'] else lgcn_len // self.n_fold
+        fold_len = adj_size // self.n_fold
 
         for i_fold in range(self.n_fold):
             start = i_fold * fold_len
             if i_fold == self.n_fold -1:
-                end = csgcn_len if self.alg_type in ['csgcn'] else lgcn_len
+                end = adj_size
             else:
                 end = (i_fold + 1) * fold_len
 
@@ -260,14 +262,16 @@ class LightGCN(object):
     def _split_A_hat_node_dropout(self, X):
         A_fold_hat = []
 
-        csgcn_len = self.n_users + self.n_items + self.n_user_sideinfo + self.n_item_sideinfo
-        lgcn_len = self.n_users + self.n_items
-        fold_len = (csgcn_len // self.n_fold) if self.alg_type in ['csgcn'] else lgcn_len // self.n_fold
+        if self.alg_type in ['csgcn']:
+            alg_size = self.n_users + self.n_items + self.n_user_sideinfo + self.n_item_sideinfo
+        else:
+            alg_size = self.n_users + self.n_items
+        fold_len = alg_size // self.n_fold
 
         for i_fold in range(self.n_fold):
             start = i_fold * fold_len
             if i_fold == self.n_fold -1:
-                end = csgcn_len if self.alg_type in ['csgcn'] else lgcn_len
+                end = alg_size
             else:
                 end = (i_fold + 1) * fold_len
 

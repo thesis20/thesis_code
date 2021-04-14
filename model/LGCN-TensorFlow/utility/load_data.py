@@ -38,13 +38,31 @@ class Data(object):
             self.item_sideinfo_onehot = ['city']
             self.user_sideinfo_onehot = ['yelping_since', 'fans', 'average_stars']
 
+        if 'yelpon' in self.path:
+            self.user_column_name = 'user_id'
+            self.item_column_name = 'business_id'
+            self.context_column_list = ['date']
+            self.item_sideinfo_multihot = ['SpecialtyFood','Restaurants','EthnicFood','Chinese','Caterers','Food','EventPlanning&Services','Nightlife','Steakhouses','Bars','Seafood','SportsBars','Canadian(New)','American(Traditional)','Burgers','Italian','CocktailBars','Mediterranean','Hotels&Travel','Venues&EventSpaces','Gastropubs','Arts&Entertainment','Mexican','Barbeque','ComfortFood','Thai','AsianFusion','Pakistani','Buffets','American(New)','Beauty&Spas','Grocery','Coffee&Tea','FastFood','Pizza','Salad','SushiBars','Bakeries','French','Breakfast&Brunch','Korean','IceCream&FrozenYogurt','Noodles','Desserts','Cafes','Diners','Soup','Sandwiches','Ramen','Japanese','Pubs','Vietnamese','Shopping','MiddleEastern','Halal','Taiwanese','Vegan','TeaRooms','Vegetarian','DimSum','WineBars','JuiceBars&Smoothies','Fashion','Caribbean','Beer','Wine&Spirits','ChickenWings','Lounges','TapasBars','Tapas/SmallPlates','Indian','BubbleTea','ActiveLife','Greek','Gluten-Free']
+            self.item_sideinfo_onehot = ['city']
+            self.user_sideinfo_onehot = ['yelping_since', 'fans', 'average_stars']
+
+        if 'frappe' in self.path:
+            self.user_column_name = 'user'
+            self.item_column_name = 'item'
+            self.context_column_list = ['weekday', 'isweekend', 'weather', 'timeofday']
+            self.item_sideinfo_multihot = []
+            self.item_sideinfo_onehot = ['cost']
+            self.user_sideinfo_onehot = ['country', 'city']
+
         if self.loo_eval:
             self.init_loo_split()
         else:
             self.init_train_test_split()
 
         self.n_user_sideinfo, self.n_item_sideinfo = self.sideinfo_counter()
-        self.test_context_combinations = self.get_test_context_combinations()
+
+        if self.alg_type in ['csgcn']:
+            self.test_context_combinations = self.get_test_context_combinations()
 
     def sideinfo_counter(self):
         n_user_sideinfo = 0
