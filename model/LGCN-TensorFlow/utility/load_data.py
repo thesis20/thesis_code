@@ -409,6 +409,9 @@ class Data(object):
         print('n_interactions=%d' % (self.n_train + self.n_test))
         print('n_train=%d, n_test=%d, sparsity=%.5f' % (self.n_train, self.n_test, (self.n_train + self.n_test)/(self.n_users * self.n_items)))
 
+        if self.batch_size != self.n_users // 10:
+            print(f"!! Wrong batch size, you have {self.batch_size}, consider {self.n_users // 10} !!")
+
 
     def get_sparsity_split(self):
         try:
