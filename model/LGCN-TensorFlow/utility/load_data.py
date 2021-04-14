@@ -92,11 +92,6 @@ class Data(object):
 
         self.exist_users = []
 
-        # self.n_items = total antal items
-        # self.n_users = total antal users
-        # self.n_train = antal interactions i train data
-        # self.exist_users er liste med user ids
-        # self.n_test = antal interactions in test data
         self.train_df = pd.read_csv(train_file)
         self.test_df = pd.read_csv(test_file)
         self.full_df = self.train_df.append(self.test_df)
@@ -105,15 +100,10 @@ class Data(object):
         self.n_users = self.full_df[self.user_column_name].max()
         self.n_contexts = sum([self.full_df[context].nunique() for context in self.context_column_list])
 
-        # self.unique_items = self.full_df[self.item_column_name].unique()
-
         self.create_positive_interactions()
 
 
     def create_positive_interactions(self):
-        # dictionaries mapping item and user id from full dataset to an index
-        #self.item_id_to_index = {k: v for v, k in enumerate(self.full_df[self.item_column_name].unique())}
-        #self.user_id_to_index = {k: v for v, k in enumerate(self.full_df[self.user_column_name].unique())}
         self.exist_users = self.full_df[self.user_column_name].unique()
         self.n_train = len(self.train_df.index)
         self.n_test = len(self.test_df.index)
