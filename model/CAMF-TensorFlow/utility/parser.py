@@ -10,7 +10,7 @@ def parse_args():
                         help='Embedding size.')
     parser.add_argument('--dataset', nargs='?', default='ml100k',
                         help='Choose a dataset from {ml100k, ml1m, frappe}')
-    parser.add_argument('--epoch', type=int, default=10000,
+    parser.add_argument('--epoch', type=int, default=2500,
                         help='Number of epochs.')
     parser.add_argument('--batch', type=int, default=95,
                         help='Batch size.')
@@ -20,9 +20,9 @@ def parse_args():
                         help='Decay for BPR.')
     parser.add_argument('--ks', nargs='?', default='[20, 50]',
                         help='Top k(s) to recommend')
-    parser.add_argument('--eval_interval', type=int, default=10000,
+    parser.add_argument('--eval_interval', type=int, default=500,
                         help='Interval between evaluations (epochs)')
-    parser.add_argument('--initializer', nargs='?', default='glorot',
+    parser.add_argument('--initializer', nargs='?', default='xavier',
                     help='Choose an initializer from {xavier, normal, glorot, glorot_normal}')
     parser.add_argument('--optimizer', nargs='?', default='adam',
                         help='Choose an optimizer from {adam, adagrad, RMSProp, Adadelta, GradientDescent}')

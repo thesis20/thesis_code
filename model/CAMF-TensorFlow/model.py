@@ -116,7 +116,7 @@ class CAMF():
                                         tf.zeros([self.data.n_context], dtype=tf.float32, name='context_bias'))
         elif self.alg_type == 'camf-ci':
             all_weights['context_bias'] = tf.Variable(
-                                        tf.zeros([self.data.n_context*self.neg_items], dtype=tf.float32, name='context_bias'))
+                                        tf.zeros([self.data.n_context*self.data.n_items], dtype=tf.float32, name='context_bias'))
         return all_weights
     
     def _init_graph(self):
