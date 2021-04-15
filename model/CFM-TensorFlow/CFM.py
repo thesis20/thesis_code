@@ -24,7 +24,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Run CFM.")
     parser.add_argument('--path', nargs='?', default='Data/',
                         help='Input data path.')
-    parser.add_argument('--dataset', nargs='?', default='lastfm',
+    parser.add_argument('--dataset', nargs='?', default='frappe',
                         help='Choose a dataset. frappe, lastfm, movielens')
     parser.add_argument('--epoch', type=int, default=300,
                         help='Number of epochs.')
@@ -56,7 +56,7 @@ def parse_args():
                         help='dimension of attention_size')
     parser.add_argument('--attentive_pooling', type=bool, default=False,
                         help='the flag of attentive_pooling')
-    parser.add_argument('--num_field', type=int, default=4,
+    parser.add_argument('--num_field', type=int, default=5,
                         help='number of fields')
 
     return parser.parse_args()
