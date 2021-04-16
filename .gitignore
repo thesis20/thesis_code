@@ -303,3 +303,9 @@ model/Itemsplitting-LGCN/checkpoints/*
 
 model/Itemsplitting-LGCN/tensorboard/*
 
+Data/*
+data/*
+model/LGCN-TensorFlow/evaluator/__pycache__/*
+model/LGCN-TensorFlow/evaluator/cpp/__pycache__/*
+model/LGCN-TensorFlow/evaluator/python/__pycache__/*
+model/LGCN-TensorFlow/utility/__pycache__/*
