@@ -111,6 +111,21 @@ class evaluator():
         f.write(line)
         f.close()
         return hr_value, ndcg_value, mrr_value
+    
+
+    def evaluate_loo_no_sort(self, users_topk, ground_truth_dict, topk):
+        hrs, ndcgs, mrrs = [], [], []
+        for key in users_topk.keys():
+            hitrate, ndcg, mrr = self.evaluate_hr_ndcg_mrr(users_topk[key], ground_truth_dict[key])
+            hrs.append(hitrate)
+            ndcgs.append(ndcg)
+            mrrs.append(mrr)
+        
+        hr_value = sum(hrs) / len(hrs)
+        ndcg_value = sum(ndcgs) / len(ndcgs)
+        mrr_value = sum(mrrs) / len(mrrs)
+
+        return hr_value, ndcg_value, mrr_value
 
     
     def evaluate(self, score_dict, ground_truth_dict, topk, epoch):
