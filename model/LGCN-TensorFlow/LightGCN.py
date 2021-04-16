@@ -30,6 +30,8 @@ class LightGCN(object):
         self.n_items = data_config['n_items']
         if self.alg_type in ['csgcn']:
             self.n_contexts = data_config['n_contexts']
+            self.n_user_sideinfo = data_config['n_user_sideinfo']
+            self.n_item_sideinfo = data_config['n_item_sideinfo']
         self.n_fold = 100
         self.norm_adj = data_config['norm_adj']
         self.n_nonzero_elems = self.norm_adj.count_nonzero()
@@ -57,6 +59,8 @@ class LightGCN(object):
         if self.alg_type in ['csgcn']:
             self.pos_items_context = tf.placeholder(tf.int32, shape=(None, None))
             self.neg_items_context = tf.placeholder(tf.int32, shape=(None, None))
+            self.user_sideinfo = tf.placeholder(tf.int32, shape=(None, None))
+            self.item_sideinfo = tf.placeholder(tf.int32, shape=(None, None))
         
         self.node_dropout_flag = args.node_dropout_flag
         self.node_dropout = tf.placeholder(tf.float32, shape=[None])
@@ -122,8 +126,11 @@ class LightGCN(object):
             2. gcn:  defined in 'Semi-Supervised Classification with Graph Convolutional Networks', ICLR2018;
             3. gcmc: defined in 'Graph Convolutional Matrix Completion', KDD2018;
         """
-        if self.alg_type in ['lightgcn', 'csgcn']:
+        if self.alg_type in ['lightgcn']:
             self.ua_embeddings, self.ia_embeddings = self._create_lightgcn_embed()
+
+        if self.alg_type in ['csgcn']:
+            self.ua_embeddings, self.ia_embeddings = self._create_csgcn_embed()
             
         elif self.alg_type in ['ngcf']:
             self.ua_embeddings, self.ia_embeddings = self._create_ngcf_embed()
@@ -150,6 +157,8 @@ class LightGCN(object):
             self.neg_item_context_pre = tf.nn.embedding_lookup(self.weights['item_context_embedding'], self.neg_items_context)
             self.pos_item_context_pre = tf.reduce_mean(self.pos_item_context_pre, axis=1)
             self.neg_item_context_pre = tf.reduce_mean(self.neg_item_context_pre, axis=1)
+            self.user_sideinfo_embeddings = tf.nn.embedding_lookup(self.weights['user_sideinfo_embedding'], self.user_sideinfo)
+            self.item_sideinfo_embeddings = tf.nn.embedding_lookup(self.weights['item_sideinfo_embedding'], self.item_sideinfo)
 
         """
         *********************************************************
@@ -192,6 +201,10 @@ class LightGCN(object):
             all_weights['item_embedding'] = tf.Variable(initializer([self.n_items, self.emb_dim]), name='item_embedding')
             if self.alg_type in ['csgcn']:
                 all_weights['item_context_embedding'] = tf.Variable(initializer([self.n_items*self.n_contexts, self.emb_dim]), name='item_context_embedding')
+                all_weights['user_sideinfo_embedding'] = tf.Variable(initializer([self.n_user_sideinfo, self.emb_dim]),
+                                                             name='user_sideinfo_embedding')
+                all_weights['item_sideinfo_embedding'] = tf.Variable(initializer([self.n_item_sideinfo, self.emb_dim]),
+                                                             name='item_sideinfo_embedding')
             print('using random initialization')#print('using xavier initialization')
         else:
             all_weights['user_embedding'] = tf.Variable(initial_value=self.pretrain_data['user_embed'], trainable=True,
@@ -201,6 +214,10 @@ class LightGCN(object):
             if self.alg_type in ['csgcn']:
                 all_weights['item_context_embedding'] = tf.Variable(initial_value=self.pretrain_data['item_context_embed'], trainable=True,
                                                         name='item_context_embedding', dtype=tf.float32)
+                all_weights['user_sideinfo_embedding'] = tf.Variable(initial_value=self.pretrain_data['user_sideinfo_embedding'], trainable=True,
+                                                        name='user_sideinfo_embedding', dtype=tf.float32)
+                all_weights['item_sideinfo_embedding'] = tf.Variable(initial_value=self.pretrain_data['item_sideinfo_embedding'], trainable=True,
+                                                        name='item_sideinfo_embedding', dtype=tf.float32)
             print('using pretrained initialization')
             
         self.weight_size_list = [self.emb_dim] + self.weight_size
@@ -225,11 +242,17 @@ class LightGCN(object):
     def _split_A_hat(self, X):
         A_fold_hat = []
 
-        fold_len = (self.n_users + self.n_items) // self.n_fold
+        if self.alg_type in ['csgcn']:
+            adj_size = self.n_users + self.n_items + self.n_user_sideinfo + self.n_item_sideinfo
+        else:
+            adj_size = self.n_users + self.n_items
+
+        fold_len = adj_size // self.n_fold
+
         for i_fold in range(self.n_fold):
             start = i_fold * fold_len
             if i_fold == self.n_fold -1:
-                end = self.n_users + self.n_items
+                end = adj_size
             else:
                 end = (i_fold + 1) * fold_len
 
@@ -239,11 +262,16 @@ class LightGCN(object):
     def _split_A_hat_node_dropout(self, X):
         A_fold_hat = []
 
-        fold_len = (self.n_users + self.n_items) // self.n_fold
+        if self.alg_type in ['csgcn']:
+            alg_size = self.n_users + self.n_items + self.n_user_sideinfo + self.n_item_sideinfo
+        else:
+            alg_size = self.n_users + self.n_items
+        fold_len = alg_size // self.n_fold
+
         for i_fold in range(self.n_fold):
             start = i_fold * fold_len
             if i_fold == self.n_fold -1:
-                end = self.n_users + self.n_items
+                end = alg_size
             else:
                 end = (i_fold + 1) * fold_len
 
@@ -252,6 +280,32 @@ class LightGCN(object):
             A_fold_hat.append(self._dropout_sparse(temp, 1 - self.node_dropout[0], n_nonzero_temp))
 
         return A_fold_hat
+
+    def _create_csgcn_embed(self):
+        if self.node_dropout_flag:
+            A_fold_hat = self._split_A_hat_node_dropout(self.norm_adj)
+        else:
+            A_fold_hat = self._split_A_hat(self.norm_adj)
+
+        ego_embeddings = tf.concat([self.weights['user_embedding'],
+                                    self.weights['item_embedding'],
+                                    self.weights['user_sideinfo_embedding'],
+                                    self.weights['item_sideinfo_embedding']], axis=0)
+        all_embeddings = [ego_embeddings]
+
+        for k in range(0, self.n_layers):
+
+            temp_embed = []
+            for f in range(self.n_fold):
+                temp_embed.append(tf.sparse_tensor_dense_matmul(A_fold_hat[f], ego_embeddings))
+
+            side_embeddings = tf.concat(temp_embed, 0)
+            ego_embeddings = side_embeddings
+            all_embeddings += [ego_embeddings]
+        all_embeddings=tf.stack(all_embeddings,1)
+        all_embeddings=tf.reduce_mean(all_embeddings,axis=1,keepdims=False)
+        u_g_embeddings, i_g_embeddings, _, _ = tf.split(all_embeddings, [self.n_users, self.n_items, self.n_user_sideinfo, self.n_item_sideinfo], 0)
+        return u_g_embeddings, i_g_embeddings
 
     def _create_lightgcn_embed(self):
         if self.node_dropout_flag:
@@ -501,6 +555,8 @@ if __name__ == '__main__':
     config['n_items'] = data_generator.n_items
     if args.alg_type in ['csgcn']:
         config['n_contexts'] = data_generator.n_contexts
+        config['n_user_sideinfo'] = data_generator.n_user_sideinfo
+        config['n_item_sideinfo'] = data_generator.n_item_sideinfo
 
     """
     *********************************************************
