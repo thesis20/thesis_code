@@ -88,6 +88,10 @@ class LightGCN(object):
             tf.summary.scalar('train_ndcg_first', self.train_ndcg_first)
             self.train_ndcg_last = tf.placeholder(tf.float32)
             tf.summary.scalar('train_ndcg_last', self.train_ndcg_last)
+            self.train_precision_first = tf.placeholder(tf.float32)
+            tf.summary.scalar('train_precision_first', self.train_precision_first)
+            self.train_precision_last = tf.placeholder(tf.float32)
+            tf.summary.scalar('train_precision_last', self.train_precision_last)
         self.merged_train_acc = tf.summary.merge(tf.get_collection(tf.GraphKeys.SUMMARIES, 'TRAIN_ACC'))
 
         with tf.name_scope('TEST_LOSS'):
@@ -110,6 +114,10 @@ class LightGCN(object):
             tf.summary.scalar('test_ndcg_first', self.test_ndcg_first)
             self.test_ndcg_last = tf.placeholder(tf.float32)
             tf.summary.scalar('test_ndcg_last', self.test_ndcg_last)
+            self.test_precision_first = tf.placeholder(tf.float32)
+            tf.summary.scalar('test_precision_first', self.test_precision_first)
+            self.test_precision_last = tf.placeholder(tf.float32)
+            tf.summary.scalar('test_precision_last', self.test_precision_last)
         self.merged_test_acc = tf.summary.merge(tf.get_collection(tf.GraphKeys.SUMMARIES, 'TEST_ACC'))
         """
         *********************************************************
@@ -195,7 +203,7 @@ class LightGCN(object):
 
     def _init_weights(self):
         all_weights = dict()
-        initializer = tf.random_normal_initializer(stddev=0.01) #tf.contrib.layers.xavier_initializer()
+        initializer = tf.random_normal_initializer(stddev=0.01) #tf.contrib.layers.xavier_initializer() # tf.random_normal_initializer(stddev=0.01)
         if self.pretrain_data is None:
             all_weights['user_embedding'] = tf.Variable(initializer([self.n_users, self.emb_dim]), name='user_embedding')
             all_weights['item_embedding'] = tf.Variable(initializer([self.n_items, self.emb_dim]), name='item_embedding')
@@ -263,15 +271,15 @@ class LightGCN(object):
         A_fold_hat = []
 
         if self.alg_type in ['csgcn']:
-            alg_size = self.n_users + self.n_items + self.n_user_sideinfo + self.n_item_sideinfo
+            adj_size = self.n_users + self.n_items + self.n_user_sideinfo + self.n_item_sideinfo
         else:
-            alg_size = self.n_users + self.n_items
-        fold_len = alg_size // self.n_fold
+            adj_size = self.n_users + self.n_items
+        fold_len = adj_size // self.n_fold
 
         for i_fold in range(self.n_fold):
             start = i_fold * fold_len
             if i_fold == self.n_fold -1:
-                end = alg_size
+                end = adj_size
             else:
                 end = (i_fold + 1) * fold_len
 
@@ -751,7 +759,9 @@ if __name__ == '__main__':
         summary_train_acc = sess.run(model.merged_train_acc, feed_dict={model.train_rec_first: ret['recall'][0],
                                                                         model.train_rec_last: ret['recall'][-1],
                                                                         model.train_ndcg_first: ret['ndcg'][0],
-                                                                        model.train_ndcg_last: ret['ndcg'][-1]})
+                                                                        model.train_ndcg_last: ret['ndcg'][-1],
+                                                                        model.train_precision_first: ret['precision'][0],
+                                                                        model.train_precision_last: ret['precision'][-1]})
         train_writer.add_summary(summary_train_acc, epoch // 20)
         
         '''
@@ -791,7 +801,8 @@ if __name__ == '__main__':
         ret = test(sess, model, users_to_test, drop_flag=True)
         summary_test_acc = sess.run(model.merged_test_acc,
                                     feed_dict={model.test_rec_first: ret['recall'][0], model.test_rec_last: ret['recall'][-1],
-                                               model.test_ndcg_first: ret['ndcg'][0], model.test_ndcg_last: ret['ndcg'][-1]})
+                                               model.test_ndcg_first: ret['ndcg'][0], model.test_ndcg_last: ret['ndcg'][-1],
+                                               model.test_precision_first: ret['precision'][0], model.test_precision_last: ret['precision'][-1]})
         train_writer.add_summary(summary_test_acc, epoch // 20)
                                                                                                  
                                                                                                  
