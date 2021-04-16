@@ -12,32 +12,32 @@ import math as m
 
 class LoadDataset():
     def __init__(self, random_seed, dataset='ml100k', eval_method='fold'):
-
+        prefix = '../Graph-conv-context-aware-idea-2021-wip/'
         if dataset == 'ml100k':
             self.context_list = ['weekday', 'timeofday']
             self.userid_column_name = 'userId'
             self.itemid_column_name = 'movieId'
-            self.path = '../Graph-conv-context-aware-idea-2021-wip/Data/ml100k/'
+            self.path = prefix + 'Data/ml100k/'
         elif dataset == 'ml1m':
             self.context_list = ['weekday', 'timeofday']
             self.userid_column_name = 'userId'
             self.itemid_column_name = 'movieId'
-            self.path = 'Data/ml1m/'
+            self.path = prefix + 'Data/ml1m/'
         elif dataset == 'frappe':
-            self.context_list = ['weekday', 'timeofday', 'isweekend', 'weather']
+            self.context_list = ['weekday', 'timeofday', 'isweekend', 'weather', 'cost', 'country', 'city']
             self.userid_column_name = 'user'
             self.itemid_column_name = 'item'
-            self.path = 'Data/Frappe/'
+            self.path = prefix + 'Data/Frappe/'
         elif dataset == 'yelpnc':
-            self.context_list = ['date']
+            self.context_list = ['hour', 'day_of_week']
             self.userid_column_name = 'user_id'
             self.itemid_column_name = 'business_id'
-            self.path = 'Data/yelpnc/'
+            self.path = prefix + 'Data/yelpnc/'
         elif dataset == 'yelpon':
-            self.context_list = ['date']
+            self.context_list = ['hour', 'day_of_week']
             self.userid_column_name = 'user_id'
             self.itemid_column_name = 'business_id'
-            self.path = 'Data/yelpon/'
+            self.path = prefix + 'Data/yelpon/'
         else:
             print("No dataset defined")
             exit()
@@ -61,6 +61,7 @@ class LoadDataset():
         print(f"n_users: {self.n_users}")
         print(f"n_items: {self.n_items}")
         print(f"n_context: {self.n_context}")
+        print(f"context combinations: {len(self.context_test_combinations)}")
         print("-------- LEARNING TIME --------")
 
     def user_counter(self):

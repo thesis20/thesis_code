@@ -8,6 +8,7 @@ from evaluation import evaluator
 from LoadData import LoadDataset
 import pickle
 from collections import defaultdict
+from tqdm import tqdm
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 cpus = [x.name for x in device_lib.list_local_devices() if x.device_type == 'CPU']
@@ -256,7 +257,7 @@ class CAMF():
             user_index = self.data.user_offset_dict[user]
             user_indexes.append(user_index)
                 
-        for context_comb in self.data.context_test_combinations:
+        for context_comb in tqdm(self.data.context_test_combinations):
             feed_dict = {self.users: user_indexes, self.pos_items: item_indexes,
                             self.pos_context: [list(context_comb)]}
             pos_scores = self.sess.run(self.pos_scores, feed_dict=feed_dict)

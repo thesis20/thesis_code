@@ -9,7 +9,7 @@ def parse_args():
     parser.add_argument('--embed_size', type=int, default=10,
                         help='Embedding size.')
     parser.add_argument('--dataset', nargs='?', default='ml100k',
-                        help='Choose a dataset from {ml100k, ml1m, frappe}')
+                        help='Choose a dataset from {ml100k, ml1m, frappe, yelpnc, yelpon}')
     parser.add_argument('--epoch', type=int, default=2500,
                         help='Number of epochs.')
     parser.add_argument('--batch', type=int, default=95,

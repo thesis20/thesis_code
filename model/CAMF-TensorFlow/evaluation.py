@@ -126,11 +126,12 @@ class evaluator():
         precs, recs, f1s, ndcgs = [], [], [], []
         status = 0
         for key in sorted_scores.keys():
-            prec, rec, f1, ndcg = self.evaluate_one_user(sorted_scores[key], ground_truth_dict[key])
-            precs.append(prec)
-            recs.append(rec)
-            f1s.append(f1)
-            ndcgs.append(ndcg)
+            if key in ground_truth_dict:
+                prec, rec, f1, ndcg = self.evaluate_one_user(sorted_scores[key], ground_truth_dict[key])
+                precs.append(prec)
+                recs.append(rec)
+                f1s.append(f1)
+                ndcgs.append(ndcg)
         
         precision_value = sum(precs) / len(precs)
         recall_value = sum(recs) / len(recs)
