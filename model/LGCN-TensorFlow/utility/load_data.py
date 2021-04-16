@@ -33,7 +33,7 @@ class Data(object):
         if 'yelpnc' in self.path:
             self.user_column_name = 'user_id'
             self.item_column_name = 'business_id'
-            self.context_column_list = ['month','day_of_week','timeofday'] # 'hour'
+            self.context_column_list = ['month','day_of_week','timeofday', 'hour']
             self.item_sideinfo_multihot = ['Burgers','ChickenWings','Bars','Restaurants','Nightlife','SportsBars','American(Traditional)','Steakhouses','Tapas/SmallPlates','Breakfast&Brunch','American(New)','Pubs','CocktailBars','TapasBars','Gastropubs','Food','Coffee&Tea','BeerBar','Breweries','Bakeries','Southern','SoulFood','Arts&Entertainment','Sandwiches','MusicVenues','Pizza','Italian','WineBars','IceCream&FrozenYogurt','FastFood','Chinese','SushiBars','Thai','AsianFusion','Japanese','EventPlanning&Services','Venues&EventSpaces','Mexican','Vietnamese','Diners','ComfortFood','Cafes','Salad','French','Caterers','Shopping','Beer','Wine&Spirits','Delis','Barbeque','Seafood','Soup','Tex-Mex','Fashion','DepartmentStores','Lounges','Vegetarian','ActiveLife','Desserts','LatinAmerican','Cinema','Vegan','Gluten-Free','Home&Garden','Cajun/Creole','Bagels','Beauty&Spas','SpecialtyFood','Mediterranean','Grocery','Noodles','FoodTrucks','LocalFlavor','Greek','Indian','EthnicFood','BeerGardens','Korean','Flowers&Gifts']
             self.item_sideinfo_onehot = ['city']
             self.user_sideinfo_onehot = ['yelping_since', 'fans', 'average_stars']
@@ -338,15 +338,11 @@ class Data(object):
                     item_sideinfo_offset = self.n_users + self.n_items + self.n_user_sideinfo + onehot
                     adj_mat[itemId, item_sideinfo_offset] = 1 # US (OneHot)
                     # TODO Prøv at indsætte identity matrix i stedet
-                    #adj_mat[item_sideinfo_offset, itemId] = 1 # USt (OneHot)
+                    adj_mat[item_sideinfo_offset, itemId] = 1 # USt (OneHot)
                 for multihot in item_sideinfos[1]: # Multihot
                     item_sideinfo_offset = self.n_users + self.n_items + self.n_user_sideinfo + multihot
-                    adj_mat[itemId, item_sideinfo_offset] = 1 # US (Multihot)
-                    #adj_mat[item_sideinfo_offset, itemId] = 1 # USt (Multihot)
-
-                for i in range(self.n_user_sideinfo + self.n_item_sideinfo):
-                    offset = self.n_users + self.n_items
-                    adj_mat[i + offset, i + offset] = 1
+                    adj_mat[itemId, item_sideinfo_offset] = 1 / len(item_sideinfos[1]) # US (Multihot)
+                    adj_mat[item_sideinfo_offset, itemId] = 1 / len(item_sideinfos[1]) # USt (Multihot)
 
                 adj_mat[userId, item_offset] = 1 # R
                 adj_mat[item_offset, userId] = 1 # Rt
