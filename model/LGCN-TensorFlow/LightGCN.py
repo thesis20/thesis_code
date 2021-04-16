@@ -271,15 +271,15 @@ class LightGCN(object):
         A_fold_hat = []
 
         if self.alg_type in ['csgcn']:
-            alg_size = self.n_users + self.n_items + self.n_user_sideinfo + self.n_item_sideinfo
+            adj_size = self.n_users + self.n_items + self.n_user_sideinfo + self.n_item_sideinfo
         else:
-            alg_size = self.n_users + self.n_items
-        fold_len = alg_size // self.n_fold
+            adj_size = self.n_users + self.n_items
+        fold_len = adj_size // self.n_fold
 
         for i_fold in range(self.n_fold):
             start = i_fold * fold_len
             if i_fold == self.n_fold -1:
-                end = alg_size
+                end = adj_size
             else:
                 end = (i_fold + 1) * fold_len
 
