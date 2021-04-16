@@ -58,7 +58,7 @@ def test(sess, model, users_to_test, drop_flag=False, train_set_flag=0):
                                                                 model.node_dropout: [0.] * len(eval(args.layer_size)),
                                                                 model.mess_dropout: [0.] * len(eval(args.layer_size))}))
             rate_batch = np.reshape(rate_batch, (len(data_generator.test_context_combinations), len(user_batch), data_generator.n_items))
-            rate_batch = np.mean(rate_batch, axis=0)
+            rate_batch = np.max(rate_batch, axis=0)
         else:
             if drop_flag == False:
                 rate_batch = sess.run(model.batch_ratings, {model.users: user_batch,
@@ -76,9 +76,9 @@ def test(sess, model, users_to_test, drop_flag=False, train_set_flag=0):
                     test_items.append([itemId for itemId, _ in data_generator.test_set[user]])
                 else:
                     test_items.append(data_generator.test_set[user])# (B, #test_items)
-                
+
             # set the ranking scores of training items to -inf,
-            # then the training items will be sorted at the end of the ranking list.    
+            # then the training items will be sorted at the end of the ranking list.
             for idx, user in enumerate(user_batch):
                 if model.alg_type in ['csgcn']:
                     train_items_off = [itemId for itemId, _ in data_generator.train_items[user]]
@@ -107,10 +107,8 @@ def test(sess, model, users_to_test, drop_flag=False, train_set_flag=0):
     result['recall'] += final_result[1]
     result['ndcg'] += final_result[3]
     return result
-               
+
             
-
-
 def test_loo(sess, model, users_to_test, drop_flag=False, train_set_flag=0):
         # B: batch size
     # N: the number of items

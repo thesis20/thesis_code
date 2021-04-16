@@ -18,7 +18,7 @@ class LoadData():
                 self.context_list = ['weekday', 'timeofday']
                 self.userid_column_name = 'userId'
                 self.itemid_column_name = 'movieId'
-                self.path = 'Data/ml100k/'
+                self.path = '../../Data/ml100k/'
             elif dataset == 'ml1m':
                 self.genrelist = ['Action', 'Adventure', 'Animation', 'Children\'s',
                                 'Comedy', 'Crime', 'Documentary', 'Drama', 'Fantasy', 'Film-Noir',
@@ -28,7 +28,7 @@ class LoadData():
                 self.context_list = ['weekday', 'timeofday']
                 self.userid_column_name = 'userId'
                 self.itemid_column_name = 'movieId'
-                self.path = 'Data/ml1m/'
+                self.path = '../../Data/ml1m/'
 
             self.eval_method = eval_method
             self.train_file = self.path + "train.txt"
