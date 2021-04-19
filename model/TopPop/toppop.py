@@ -40,20 +40,18 @@ class TopPop():
             print(f"NDCG: {ndcg_value}")
 
 
-
-
 class TopPopContext():
     def __init__(self, dataframe_path, loo_path, userid_column_name, itemid_column_name, ks):
-        if dataframe_path == 'model/TopPop/frappe':
+        if dataframe_path == 'FRAPPEloo_out.txt':
             self.context_list = ['weekday', 'timeofday', 'isweekend', 'weather']
         elif dataframe_path == 'yelpon':
-            self.context_list = ['weekday', 'timeofday', 'isweekend', 'weather']
+            self.context_list = ['month','day_of_week','timeofday', 'hour']
         elif dataframe_path =='yelpnc':
-            self.context_list = ['weekday', 'timeofday', 'isweekend', 'weather']
-        self.dataframe = pd.read_csv(dataframe_path + '.txt', sep=',', )
-        self.loo_df = pd.read_csv(loo_path + '.txt', sep=',', )
+            self.context_list = ['month','day_of_week','timeofday', 'hour']
+        self.dataframe = pd.read_csv('Data/' + dataframe_path, sep=',', )
+        self.loo_df = pd.read_csv('Data/' + loo_path, sep=',', )
+        self.evaluator = evaluator()
 
-       # self.evaluator = evaluator()
        # Get popular items in case the context does not have enough items to fill a list of k size
         pop_series = self.dataframe[itemid_column_name].value_counts()
         pop_ids = pop_series.index.values.tolist()
@@ -85,7 +83,6 @@ class TopPopContext():
                         if id not in value and len(user_top_k_dict[key]) < k:
                             user_top_k_dict[key].append(id)    
                 else:
-                    k_list = value[:k]
                     user_top_k_dict[key] = user_top_k_dict[key][:k]
 
             hr, ndcg, mrr = evaluator.evaluate_loo_no_sort(self.evaluator, user_top_k_dict, user_ground_truth_dict, k)
@@ -110,10 +107,8 @@ def construct_user_ground_truth_dict(dataframe, userid_column_name, itemid_colum
     
     return user_ground_truth_dict
 
-
-
 #TopPop('ml100k', 'ml100ktest', 'userId', 'movieId', [20, 50, 100])
 #TopPop('yelpnc', 'yelpnctest', 'user_id', 'business_id', [20, 50, 100])
 #TopPop('yelpon', 'yelpontest', 'user_id', 'business_id', [20, 50, 100])
 #TopPop('frappe', 'frappetest', 'userId', 'movieId', [20, 50, 100])
-TopPopContext('model/TopPop/frappe', 'model/TopPop/frappetest', 'user', 'item', [20, 50, 100])
+TopPopContext('FRAPPEloo_out.txt', 'FRAPPEloo_test.txt', 'user', 'item', [20, 50, 100])
