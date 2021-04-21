@@ -51,6 +51,8 @@ class LightGCN(object):
         *********************************************************
         Create Placeholder for Input Data & Dropout.
         '''
+        tf.set_random_seed(2021)
+
         # placeholder definition
         self.users = tf.placeholder(tf.int32, shape=(None,))
         self.pos_items = tf.placeholder(tf.int32, shape=(None,))
@@ -167,14 +169,22 @@ class LightGCN(object):
             self.neg_item_context_pre = tf.reduce_mean(self.neg_item_context_pre, axis=1)
             self.user_sideinfo_embeddings = tf.nn.embedding_lookup(self.weights['user_sideinfo_embedding'], self.user_sideinfo)
             self.item_sideinfo_embeddings = tf.nn.embedding_lookup(self.weights['item_sideinfo_embedding'], self.item_sideinfo)
+            self.pos_item_bias = tf.nn.embedding_lookup(self.weights['item_bias'], self.pos_items)
+            self.neg_item_bias = tf.nn.embedding_lookup(self.weights['item_bias'], self.neg_items)
+            self.pos_context_bias = tf.nn.embedding_lookup(self.weights['context_bias'], self.pos_items_context)
+            self.neg_context_bias = tf.nn.embedding_lookup(self.weights['context_bias'], self.neg_items_context)
+            self.pos_context_bias = tf.reduce_mean(self.pos_context_bias, axis=1)
+            self.neg_context_bias = tf.reduce_mean(self.neg_context_bias, axis=1)
 
         """
         *********************************************************
         Inference for the testing phase.
         """
         if self.alg_type in ['csgcn']:
-            self.pos_i_g_c_embeddings = tf.add(self.pos_item_context_pre, self.pos_i_g_embeddings)
-            self.batch_ratings = tf.matmul(self.u_g_embeddings, self.pos_i_g_c_embeddings, transpose_a=False, transpose_b=True)
+            self.batch_ratings = self._fm_predictor_csgcn(self.u_g_embeddings,
+                                                        self.pos_i_g_embeddings,
+                                                        self.pos_item_context_pre,
+                                                        self.pos_item_bias, self.pos_context_bias)
         else:
             self.batch_ratings = tf.matmul(self.u_g_embeddings, self.pos_i_g_embeddings, transpose_a=False, transpose_b=True)
 
@@ -213,6 +223,10 @@ class LightGCN(object):
                                                              name='user_sideinfo_embedding')
                 all_weights['item_sideinfo_embedding'] = tf.Variable(initializer([self.n_item_sideinfo, self.emb_dim]),
                                                              name='item_sideinfo_embedding')
+                all_weights['item_bias'] = tf.Variable(tf.zeros([self.n_items]))
+                all_weights['user_bias'] = tf.Variable(tf.zeros([self.n_users]))
+                all_weights['context_bias'] = tf.Variable(tf.zeros([self.n_items*self.n_contexts]))
+
             print('using random initialization')#print('using xavier initialization')
         else:
             all_weights['user_embedding'] = tf.Variable(initial_value=self.pretrain_data['user_embed'], trainable=True,
@@ -226,6 +240,12 @@ class LightGCN(object):
                                                         name='user_sideinfo_embedding', dtype=tf.float32)
                 all_weights['item_sideinfo_embedding'] = tf.Variable(initial_value=self.pretrain_data['item_sideinfo_embedding'], trainable=True,
                                                         name='item_sideinfo_embedding', dtype=tf.float32)
+                all_weights['item_bias'] = tf.Variable(initial_value=self.pretrain_data['item_bias'], trainable=True,
+                                                        name='item_bias', dtype=tf.float32)
+                all_weights['user_bias'] = tf.Variable(initial_value=self.pretrain_data['user_bias'], trainable=True,
+                                                        name='user_bias', dtype=tf.float32)
+                all_weights['context_bias'] = tf.Variable(initial_value=self.pretrain_data['context_bias'], trainable=True,
+                                                        name='context_bias', dtype=tf.float32)
             print('using pretrained initialization')
             
         self.weight_size_list = [self.emb_dim] + self.weight_size
@@ -302,7 +322,6 @@ class LightGCN(object):
         all_embeddings = [ego_embeddings]
 
         for k in range(0, self.n_layers):
-
             temp_embed = []
             for f in range(self.n_fold):
                 temp_embed.append(tf.sparse_tensor_dense_matmul(A_fold_hat[f], ego_embeddings))
@@ -425,18 +444,61 @@ class LightGCN(object):
         u_g_embeddings, i_g_embeddings = tf.split(all_embeddings, [self.n_users, self.n_items], 0)
         return u_g_embeddings, i_g_embeddings
 
+    def _gfm_predictor_csgcn(self, users, items, context, item_biases, context_biases):
+        # users(batch_size, emb_size)
+        big_v = tf.stack([context, users, items], 0, name="big_v")
+        #big_v (3, batch_size, emb_size)
+
+        test = tf.matmul(big_v, big_v, transpose_b=True, name="test")
+        test_2 = tf.reduce_sum(test,axis=[0,2])
+        test_3 = tf.reduce_sum(tf.multiply(big_v, big_v), axis=[0,2])
+        score = 0.5 * tf.subtract(test_2, test_3)
+
+        # scores (batch_size)
+        return score
+
+    def _fm_predictor_csgcn(self, users, items, context, item_biases, context_biases):
+        # users = (batch_size)
+        user_emb_sum = tf.reduce_sum(users, name='user_emb_sum')
+        item_emb_sum = tf.reduce_sum(items, name='item_emb_sum')
+        context_emb_sum = tf.reduce_sum(context, name='context_emb_sum')
+        emb_sum = tf.add_n([user_emb_sum, item_emb_sum, context_emb_sum], name='add_n')
+        first_term = tf.square(emb_sum, name='first_term')
+
+        user_emb_sq = tf.square(users, name='user_emb_sq')
+        item_emb_sq = tf.square(items, name='item_emb_sq')
+        context_emb_sq = tf.square(context, name='context_emb_sq')
+        user_emb_sq_sum = tf.reduce_sum(user_emb_sq, name='user_emb_sq_sum')
+        item_emb_sq_sum = tf.reduce_sum(item_emb_sq, name='item_emb_sq_sum')
+        context_emb_sq_sum = tf.reduce_sum(context_emb_sq, name='context_emb_sq_sum')
+        second_term = tf.add_n([user_emb_sq_sum, item_emb_sq_sum, context_emb_sq_sum], name='second_term')
+
+        pred = 0.5 * tf.subtract(first_term, second_term, name='pred')
+
+        # bilinear = tf.reduce_sum(pred, 1, keepdims=True, name='bilinear')
+
+        item_bias_reduced = tf.reduce_sum(item_biases)
+        context_bias_reduced = tf.reduce_sum(context_biases)
+
+        y_hat = tf.add_n([pred, item_bias_reduced, context_bias_reduced], name='yhat')
+
+        return y_hat
+
     def create_bpr_loss_csgcn(self, users, pos_items, neg_items):
-        pos_items = tf.add(pos_items, self.pos_item_context_pre)
-        neg_items = tf.add(neg_items, self.neg_item_context_pre)
-        pos_scores = tf.reduce_sum(tf.multiply(users, pos_items), axis=1)
-        neg_scores = tf.reduce_sum(tf.multiply(users, neg_items), axis=1)
+        pos_scores = self._fm_predictor_csgcn(users, pos_items, self.pos_item_context_pre, self.pos_item_bias, self.pos_context_bias)
+        neg_scores = self._fm_predictor_csgcn(users, neg_items, self.neg_item_context_pre, self.neg_item_bias, self.neg_context_bias)
+
+        # pos_items = tf.add(pos_items, self.pos_item_context_pre)
+        # neg_items = tf.add(neg_items, self.neg_item_context_pre)
+        # pos_scores = tf.reduce_sum(tf.multiply(users, pos_items), axis=1)
+        # neg_scores = tf.reduce_sum(tf.multiply(users, neg_items), axis=1)
 
         regularizer = tf.nn.l2_loss(self.u_g_embeddings_pre) + tf.nn.l2_loss(
                     self.pos_i_g_embeddings_pre) + tf.nn.l2_loss(self.neg_i_g_embeddings_pre) \
                     + tf.nn.l2_loss(self.pos_item_context_pre) + tf.nn.l2_loss(self.neg_item_context_pre)
         regularizer = regularizer / self.batch_size
 
-        mf_loss = tf.reduce_mean(tf.nn.softplus(-(pos_scores - neg_scores)))
+        mf_loss = tf.nn.softplus(-(pos_scores - neg_scores))
 
 
         emb_loss = self.decay * regularizer
@@ -742,14 +804,14 @@ if __name__ == '__main__':
             print('ERROR: loss is nan.')
             sys.exit()
         
-        if (epoch % 20) != 0:
+        if (epoch % 3) != 0:
             if args.verbose > 0 and epoch % args.verbose == 0:
                 perf_str = 'Epoch %d [%.1fs]: train==[%.5f=%.5f + %.5f]' % (
                     epoch, time() - t1, loss, mf_loss, emb_loss)
                 print(perf_str)
             continue
         users_to_test = list(data_generator.train_items.keys())
-        ret = test(sess, model, users_to_test ,drop_flag=True,train_set_flag=1)
+        ret = test(sess, model, users_to_test, drop_flag=True,train_set_flag=1)
         perf_str = 'Epoch %d: train==[%.5f=%.5f + %.5f + %.5f], recall=[%s], precision=[%s], ndcg=[%s]' % \
                    (epoch, loss, mf_loss, emb_loss, reg_loss, 
                     ', '.join(['%.5f' % r for r in ret['recall']]),

@@ -33,7 +33,7 @@ class Data(object):
         if 'yelpnc' in self.path:
             self.user_column_name = 'user_id'
             self.item_column_name = 'business_id'
-            self.context_column_list = ['month','day_of_week','timeofday', 'hour']
+            self.context_column_list = ['day_of_week','timeofday', 'hour']
             self.item_sideinfo_multihot = ['Burgers','ChickenWings','Bars','Restaurants','Nightlife','SportsBars','American(Traditional)','Steakhouses','Tapas/SmallPlates','Breakfast&Brunch','American(New)','Pubs','CocktailBars','TapasBars','Gastropubs','Food','Coffee&Tea','BeerBar','Breweries','Bakeries','Southern','SoulFood','Arts&Entertainment','Sandwiches','MusicVenues','Pizza','Italian','WineBars','IceCream&FrozenYogurt','FastFood','Chinese','SushiBars','Thai','AsianFusion','Japanese','EventPlanning&Services','Venues&EventSpaces','Mexican','Vietnamese','Diners','ComfortFood','Cafes','Salad','French','Caterers','Shopping','Beer','Wine&Spirits','Delis','Barbeque','Seafood','Soup','Tex-Mex','Fashion','DepartmentStores','Lounges','Vegetarian','ActiveLife','Desserts','LatinAmerican','Cinema','Vegan','Gluten-Free','Home&Garden','Cajun/Creole','Bagels','Beauty&Spas','SpecialtyFood','Mediterranean','Grocery','Noodles','FoodTrucks','LocalFlavor','Greek','Indian','EthnicFood','BeerGardens','Korean','Flowers&Gifts']
             self.item_sideinfo_onehot = ['city']
             self.user_sideinfo_onehot = ['yelping_since', 'fans', 'average_stars']

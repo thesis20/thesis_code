@@ -24,7 +24,7 @@ def parse_args():
                         help='Interval of evaluation.')
     parser.add_argument('--is_norm', type=int, default=1,
                     help='Interval of evaluation.')
-    parser.add_argument('--epoch', type=int, default=140,
+    parser.add_argument('--epoch', type=int, default=1000,
                         help='Number of epoch.')
 
     parser.add_argument('--embed_size', type=int, default=64,
@@ -36,14 +36,14 @@ def parse_args():
 
     parser.add_argument('--regs', nargs='?', default='[1e-5,1e-5,1e-2]',
                         help='Regularizations.')
-    parser.add_argument('--lr', type=float, default=0.0001,
+    parser.add_argument('--lr', type=float, default=0.001,
                         help='Learning rate.')
 
-    parser.add_argument('--model_type', nargs='?', default='ngcf',
+    parser.add_argument('--model_type', nargs='?', default='csgcn',
                         help='Specify the name of model (lightgcn).')
     parser.add_argument('--adj_type', nargs='?', default='pre',
                         help='Specify the type of the adjacency (laplacian) matrix from {plain, norm, mean}.')
-    parser.add_argument('--alg_type', nargs='?', default='ngcf',
+    parser.add_argument('--alg_type', nargs='?', default='csgcn',
                         help='Specify the type of the graph convolutional layer from {ngcf, gcn, gcmc}.')
 
     parser.add_argument('--gpu_id', type=int, default=0,
