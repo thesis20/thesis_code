@@ -52,17 +52,18 @@ def test(sess, model, users_to_test, drop_flag=False, train_set_flag=0):
                     item_context_offsets_temp = []
                     for context in context_comb:
                         item_context_offsets_temp.append(data_generator.item_context_offset_dict[(itemId, context)])
+                    item_context_offsets.append(item_context_offsets_temp)
                 if drop_flag == False:
                     rate_batch.append(sess.run(model.batch_ratings, {model.users: user_batch,
                                                                 model.pos_items: item_batch,
-                                                                model.pos_items_context: item_context_offsets_temp}))
+                                                                model.pos_items_context: item_context_offsets}))
                 else:
                     rate_batch.append(sess.run(model.batch_ratings, {model.users: user_batch,
                                                                 model.pos_items: item_batch,
-                                                                model.pos_items_context: item_context_offsets_temp,
+                                                                model.pos_items_context: item_context_offsets,
                                                                 model.node_dropout: [0.] * len(eval(args.layer_size)),
                                                                 model.mess_dropout: [0.] * len(eval(args.layer_size))}))
-            rate_batch = np.reshape(rate_batch, (len(item_context_offsets_temp), len(user_batch), data_generator.n_items))
+            rate_batch = np.reshape(rate_batch, (len(item_context_offsets), len(user_batch), data_generator.n_items))
             rate_batch = np.max(rate_batch, axis=0)
         else:
             if drop_flag == False:
