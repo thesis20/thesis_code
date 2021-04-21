@@ -503,10 +503,9 @@ class Data(object):
             neg_items = list(set(self.neg_pools[u]) - set(self.train_items[u]))
             return rd.sample(neg_items, num)
 
+        pos_items, neg_items, pos_items_context, neg_items_context = [], [], [], []
         for u in users:
-            pos_items, neg_items = [], []
             if self.alg_type in ['csgcn']:
-                pos_items_context, neg_items_context = [], []
                 pos_item_id, context = sample_pos_items_for_u(u, 1)[0]
                 neg_item_id = sample_neg_items_for_u(u, 1)[0]
                 pos_items.append(pos_item_id)
