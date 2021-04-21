@@ -64,7 +64,7 @@ def test(sess, model, users_to_test, drop_flag=False, train_set_flag=0):
                                                                 model.node_dropout: [0.] * len(eval(args.layer_size)),
                                                                 model.mess_dropout: [0.] * len(eval(args.layer_size))}))
             rate_batch = np.reshape(rate_batch, (len(data_generator.test_context_combinations), len(user_batch), data_generator.n_items))
-            rate_batch = np.max(rate_batch, axis=0)
+            rate_batch = np.mean(rate_batch, axis=0)
         else:
             if drop_flag == False:
                 rate_batch = sess.run(model.batch_ratings, {model.users: user_batch,

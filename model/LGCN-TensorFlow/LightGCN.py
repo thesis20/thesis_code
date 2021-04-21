@@ -181,8 +181,9 @@ class LightGCN(object):
         Inference for the testing phase.
         """
         if self.alg_type in ['csgcn']:
-            self.pos_i_g_c_embeddings = tf.add(self.pos_item_context_pre, self.pos_i_g_embeddings)
-            self.batch_ratings = tf.matmul(self.u_g_embeddings, self.pos_i_g_c_embeddings, transpose_a=False, transpose_b=True)
+            #self.pos_i_g_c_embeddings = tf.add(self.pos_item_context_pre, self.pos_i_g_embeddings)
+            #self.batch_ratings = tf.matmul(self.u_g_embeddings, self.pos_i_g_c_embeddings, transpose_a=False, transpose_b=True)
+            self.batch_ratings = self._gfm_eval_predictor_csgcn(self.u_g_embeddings, self.pos_i_g_embeddings, self.pos_item_context_pre, self.pos_item_bias, self.pos_context_bias)
         else:
             self.batch_ratings = tf.matmul(self.u_g_embeddings, self.pos_i_g_embeddings, transpose_a=False, transpose_b=True)
 
@@ -441,6 +442,22 @@ class LightGCN(object):
 
         u_g_embeddings, i_g_embeddings = tf.split(all_embeddings, [self.n_users, self.n_items], 0)
         return u_g_embeddings, i_g_embeddings
+    
+    def _gfm_eval_predictor_csgcn(self, users, items, context, item_biases, context_biases):
+        ui_interactions = tf.matmul(users, items, transpose_b=True)
+        uc_interactions = tf.matmul(users, context, transpose_b=True)
+        ic_interactions = tf.reduce_sum(tf.multiply(items, context), axis=1, name='ic_interactions_sum')
+        ic_interactions = tf.expand_dims(ic_interactions, axis=0, name='ic_interactions')
+        
+        expanded_item_bias = tf.expand_dims(item_biases, axis=0, name='expanded_item_bias')
+        expanded_context_bias = tf.expand_dims(context_biases, axis=0, name='expanded_context_bias')
+        interaction_matrices = tf.add_n([ui_interactions, uc_interactions], name='interaction_sum')
+        interaction_vectors = tf.add_n([ic_interactions, expanded_item_bias, expanded_context_bias], name='interaction_vectors')
+        interaction_sum = tf.add(interaction_matrices, interaction_vectors)
+        
+        scores = 0.5 * interaction_sum
+        
+        return scores
 
     def _gfm_predictor_csgcn(self, users, items, context, item_biases, context_biases):
         # users(batch_size, emb_size)
@@ -450,6 +467,7 @@ class LightGCN(object):
 
         interaction_sum = tf.add_n([cu_interactions, ci_interactions, ui_interactions])
         interaction_sum = tf.reduce_sum(interaction_sum, 1)
+        interaction_sum = tf.add_n([interaction_sum, item_biases, context_biases])
         
         scores = 0.5 * interaction_sum
 
@@ -803,7 +821,7 @@ if __name__ == '__main__':
             print('ERROR: loss is nan.')
             sys.exit()
 
-        if (epoch % 20) != 0:
+        if (epoch % 1) != 0:
             if args.verbose > 0 and epoch % args.verbose == 0:
                 perf_str = 'Epoch %d [%.1fs]: train==[%.5f=%.5f + %.5f]' % (
                     epoch, time() - t1, loss, mf_loss, emb_loss)
