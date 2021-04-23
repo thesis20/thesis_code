@@ -67,7 +67,7 @@ for i, row in test.iterrows():
     cfm_test.append(cfm_string)
 
 cfm_train_df = pd.DataFrame(cfm_train)
-cfm_test_df = pd.DataFrame(cfm_train)
+cfm_test_df = pd.DataFrame(cfm_test)
 
 cfm_train_df.to_csv('train.csv', index=False)
 cfm_test_df.to_csv('test.csv', index=False)
