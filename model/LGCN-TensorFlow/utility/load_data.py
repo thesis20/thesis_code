@@ -33,7 +33,7 @@ class Data(object):
         if 'yelpnc' in self.path:
             self.user_column_name = 'user_id'
             self.item_column_name = 'business_id'
-            self.context_column_list = ['month','day_of_week','timeofday', 'hour']
+            self.context_column_list = ['day_of_week','timeofday', 'hour']
             self.item_sideinfo_multihot = ['Burgers','ChickenWings','Bars','Restaurants','Nightlife','SportsBars','American(Traditional)','Steakhouses','Tapas/SmallPlates','Breakfast&Brunch','American(New)','Pubs','CocktailBars','TapasBars','Gastropubs','Food','Coffee&Tea','BeerBar','Breweries','Bakeries','Southern','SoulFood','Arts&Entertainment','Sandwiches','MusicVenues','Pizza','Italian','WineBars','IceCream&FrozenYogurt','FastFood','Chinese','SushiBars','Thai','AsianFusion','Japanese','EventPlanning&Services','Venues&EventSpaces','Mexican','Vietnamese','Diners','ComfortFood','Cafes','Salad','French','Caterers','Shopping','Beer','Wine&Spirits','Delis','Barbeque','Seafood','Soup','Tex-Mex','Fashion','DepartmentStores','Lounges','Vegetarian','ActiveLife','Desserts','LatinAmerican','Cinema','Vegan','Gluten-Free','Home&Garden','Cajun/Creole','Bagels','Beauty&Spas','SpecialtyFood','Mediterranean','Grocery','Noodles','FoodTrucks','LocalFlavor','Greek','Indian','EthnicFood','BeerGardens','Korean','Flowers&Gifts']
             self.item_sideinfo_onehot = ['city']
             self.user_sideinfo_onehot = ['yelping_since', 'fans', 'average_stars']
@@ -92,7 +92,7 @@ class Data(object):
         for _, row in self.test_df.iterrows():
             context_list = []
             for context in self.context_column_list:
-                context_list.append(self.context_offset_dict[context + str(row[context])])
+                context_list.append(context + str(row[context]))
             combinations.add(tuple(context_list))
         return combinations
 
@@ -503,10 +503,9 @@ class Data(object):
             neg_items = list(set(self.neg_pools[u]) - set(self.train_items[u]))
             return rd.sample(neg_items, num)
 
+        pos_items, neg_items, pos_items_context, neg_items_context = [], [], [], []
         for u in users:
-            pos_items, neg_items = [], []
             if self.alg_type in ['csgcn']:
-                pos_items_context, neg_items_context = [], []
                 pos_item_id, context = sample_pos_items_for_u(u, 1)[0]
                 neg_item_id = sample_neg_items_for_u(u, 1)[0]
                 pos_items.append(pos_item_id)
