@@ -62,12 +62,12 @@ def mrr(rank, ground_truth):
 def eval_score_matrix_loo(score_matrix, test_items, top_k=50, thread_num=None):
     def _eval_one_user(idx):
         scores = score_matrix[idx]  # all scores of the test user
-        test_item = test_items[idx + 1]  # all test items of the test user
+        test_item = test_items[idx]  # all test items of the test user
 
         ranking = argmax_top_k(scores, top_k)  # Top-K items
         result = []
         result.extend(hit(ranking, test_item))
-        result.extend(ndcg(ranking, test_item))
+        #result.extend(ndcg(ranking, test_item))
         result.extend(mrr(ranking, test_item))
 
         result = np.array(result, dtype=np.float32).flatten()

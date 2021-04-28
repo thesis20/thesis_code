@@ -12,11 +12,13 @@ from time import time
 import pandas as pd
 
 class Data(object):
-    def __init__(self, path, alg_type, batch_size):
+    def __init__(self, path, alg_type, batch_size, eval_type):
         self.path = path
         self.batch_size = batch_size
         self.loo_eval = False
         self.alg_type = alg_type
+        self.eval_type = eval_type
+        rd.seed(2021)
 
         if 'ml100k' in self.path:
             self.user_column_name = 'userId'
@@ -41,8 +43,8 @@ class Data(object):
         if 'yelpon' in self.path:
             self.user_column_name = 'user_id'
             self.item_column_name = 'business_id'
-            self.context_column_list = ['date']
-            self.item_sideinfo_multihot = ['SpecialtyFood','Restaurants','EthnicFood','Chinese','Caterers','Food','EventPlanning&Services','Nightlife','Steakhouses','Bars','Seafood','SportsBars','Canadian(New)','American(Traditional)','Burgers','Italian','CocktailBars','Mediterranean','Hotels&Travel','Venues&EventSpaces','Gastropubs','Arts&Entertainment','Mexican','Barbeque','ComfortFood','Thai','AsianFusion','Pakistani','Buffets','American(New)','Beauty&Spas','Grocery','Coffee&Tea','FastFood','Pizza','Salad','SushiBars','Bakeries','French','Breakfast&Brunch','Korean','IceCream&FrozenYogurt','Noodles','Desserts','Cafes','Diners','Soup','Sandwiches','Ramen','Japanese','Pubs','Vietnamese','Shopping','MiddleEastern','Halal','Taiwanese','Vegan','TeaRooms','Vegetarian','DimSum','WineBars','JuiceBars&Smoothies','Fashion','Caribbean','Beer','Wine&Spirits','ChickenWings','Lounges','TapasBars','Tapas/SmallPlates','Indian','BubbleTea','ActiveLife','Greek','Gluten-Free']
+            self.context_column_list = ['day_of_week', 'hour']
+            self.item_sideinfo_multihot = ['Restaurants','Nightlife','Steakhouses','Bars','Seafood','SportsBars','Canadian(New)','American(Traditional)','Burgers','Italian','CocktailBars','Mediterranean','Gastropubs','Arts&Entertainment','Hotels&Travel','Mexican','EventPlanning&Services','Chinese','Thai','AsianFusion','Buffets','American(New)','ComfortFood','Venues&EventSpaces','Food','Grocery','SpecialtyFood','EthnicFood','Pizza','Salad','SushiBars','French','Breakfast&Brunch','Korean','IceCream&FrozenYogurt','Caterers','Noodles','Desserts','Cafes','Diners','Ramen','Japanese','Soup','Pubs','Vietnamese','Coffee&Tea','Shopping','MiddleEastern','Halal','Taiwanese','Barbeque','Vegan','TeaRooms','Vegetarian','Sandwiches','Bakeries','DimSum','ChickenWings','WineBars','Beer','Wine&Spirits','Lounges','TapasBars','Tapas/SmallPlates','Indian','BubbleTea','JuiceBars&Smoothies','ActiveLife','FastFood','Greek','Gluten-Free']
             self.item_sideinfo_onehot = ['city']
             self.user_sideinfo_onehot = ['yelping_since', 'fans', 'average_stars']
 
@@ -193,6 +195,7 @@ class Data(object):
                     offset += 1
 
             self.context_offset_dict = context_offset_dict
+            self.offset_to_context_dict = dict((v,k) for k,v in self.context_offset_dict.items())
             self.item_context_offset_dict = item_context_offset_dict
             self.item_sideinfo_offset_dict = item_sideinfo_offset_dict
             self.user_sideinfo_offset_dict = user_sideinfo_offset_dict
