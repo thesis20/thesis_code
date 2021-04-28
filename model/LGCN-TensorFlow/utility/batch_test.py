@@ -44,7 +44,7 @@ def test(sess, model, users_to_test, drop_flag=False, train_set_flag=0):
         
         user_batch = test_users[start: end]
         
-        # Skip if the batch goes straight up in total num (gud english)
+        # Skip if the batch size is divisible with the total number of users
         if len(user_batch) == 0:
             continue
 
