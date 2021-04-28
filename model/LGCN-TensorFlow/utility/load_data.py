@@ -92,7 +92,7 @@ class Data(object):
         for _, row in self.test_df.iterrows():
             context_list = []
             for context in self.context_column_list:
-                context_list.append(self.context_offset_dict[context + str(row[context])])
+                context_list.append(context + str(row[context]))
             combinations.add(tuple(context_list))
         return combinations
 
