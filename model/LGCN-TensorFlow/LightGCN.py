@@ -768,7 +768,7 @@ if __name__ == '__main__':
             print('ERROR: loss is nan.')
             sys.exit()
         
-        if (epoch % 1) != 0:
+        if (epoch % 20) != 0:
             if args.verbose > 0 and epoch % args.verbose == 0:
                 perf_str = 'Epoch %d [%.1fs]: train==[%.5f=%.5f + %.5f]' % (
                     epoch, time() - t1, loss, mf_loss, emb_loss)
