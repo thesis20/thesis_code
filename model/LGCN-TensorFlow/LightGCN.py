@@ -22,6 +22,7 @@ cpus = [x.name for x in device_lib.list_local_devices() if x.device_type == 'CPU
 class LightGCN(object):
     def __init__(self, data_config, pretrain_data):
         # argument settings
+        tf.set_random_seed(2021)
         self.model_type = 'LightGCN'
         self.adj_type = args.adj_type
         self.alg_type = args.alg_type

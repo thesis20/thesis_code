@@ -11,7 +11,9 @@ import scipy.sparse as sp
 from time import time
 import pandas as pd
 
+rd.seed(2021)
 class Data(object):
+    rd.seed(2021)
     def __init__(self, path, alg_type, batch_size):
         self.path = path
         self.batch_size = batch_size
@@ -33,7 +35,7 @@ class Data(object):
         if 'yelpnc' in self.path:
             self.user_column_name = 'user_id'
             self.item_column_name = 'business_id'
-            self.context_column_list = ['month','day_of_week','timeofday', 'hour']
+            self.context_column_list = ['day_of_week','hour']
             self.item_sideinfo_multihot = ['Burgers','ChickenWings','Bars','Restaurants','Nightlife','SportsBars','American(Traditional)','Steakhouses','Tapas/SmallPlates','Breakfast&Brunch','American(New)','Pubs','CocktailBars','TapasBars','Gastropubs','Food','Coffee&Tea','BeerBar','Breweries','Bakeries','Southern','SoulFood','Arts&Entertainment','Sandwiches','MusicVenues','Pizza','Italian','WineBars','IceCream&FrozenYogurt','FastFood','Chinese','SushiBars','Thai','AsianFusion','Japanese','EventPlanning&Services','Venues&EventSpaces','Mexican','Vietnamese','Diners','ComfortFood','Cafes','Salad','French','Caterers','Shopping','Beer','Wine&Spirits','Delis','Barbeque','Seafood','Soup','Tex-Mex','Fashion','DepartmentStores','Lounges','Vegetarian','ActiveLife','Desserts','LatinAmerican','Cinema','Vegan','Gluten-Free','Home&Garden','Cajun/Creole','Bagels','Beauty&Spas','SpecialtyFood','Mediterranean','Grocery','Noodles','FoodTrucks','LocalFlavor','Greek','Indian','EthnicFood','BeerGardens','Korean','Flowers&Gifts']
             self.item_sideinfo_onehot = ['city']
             self.user_sideinfo_onehot = ['yelping_since', 'fans', 'average_stars']
@@ -71,6 +73,24 @@ class Data(object):
 
         if self.alg_type in ['csgcn']:
             self.test_context_combinations = self.get_test_context_combinations()
+            self.context_interactions = self.get_context_interactions()
+            
+    def get_context_interactions(self):
+        # (context) -> [itemId]
+        context_interactions_dict = dict()
+        for index, row in self.train_df.iterrows():
+            context_list = []
+            for context in self.context_column_list:
+                context_list.append(row[context])
+            
+            context_list = tuple(context_list)
+            if context_list not in context_interactions_dict:
+                context_interactions_dict[context_list] = [row[self.item_column_name]]
+            
+            if self.item_column_name not in context_interactions_dict[context_list]:
+                context_interactions_dict[context_list].append(row[self.item_column_name])
+                
+        return context_interactions_dict
 
     def sideinfo_counter(self):
         n_user_sideinfo = 0
@@ -430,12 +450,18 @@ class Data(object):
             while True:
                 if len(neg_items) == num: break
                 neg_id = np.random.randint(low=0, high=self.n_items,size=1)[0]
+                if neg_id not in self.train_items[u] and neg_id not in neg_items:
+                    neg_items.append(neg_id)
+            return neg_items
 
-                if self.alg_type in ['csgcn']:
-                    if neg_id not in [itemId for itemId,_ in self.train_items[u]] and neg_id not in neg_items:
-                        neg_items.append(neg_id)
-                else:
-                    if neg_id not in self.train_items[u] and neg_id not in neg_items:
+        def sample_neg_items_for_u_csgcn(u, num, context):
+            neg_items = []
+            while True:
+                if len(neg_items) == num: break
+                neg_id = np.random.randint(low=0, high=self.n_items,size=1)[0]
+                
+                if neg_id not in [itemId for itemId,_ in self.train_items[u]] and neg_id not in neg_items:
+                    if neg_id not in self.context_interactions[context]:
                         neg_items.append(neg_id)
             return neg_items
 
@@ -447,7 +473,10 @@ class Data(object):
         for u in users:
             if self.alg_type in ['csgcn']:
                 pos_item_id, context = sample_pos_items_for_u(u, 1)[0]
-                neg_item_id = sample_neg_items_for_u(u, 1)[0]
+                if self.alg_type in ['csgcn']:
+                    neg_item_id = sample_neg_items_for_u_csgcn(u, 1, context)[0]
+                else:
+                    neg_item_id = sample_neg_items_for_u(u, 1)[0]
                 pos_items.append(pos_item_id)
                 neg_items.append(neg_item_id)
 
