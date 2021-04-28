@@ -13,7 +13,6 @@ import pandas as pd
 
 rd.seed(2021)
 class Data(object):
-    rd.seed(2021)
     def __init__(self, path, alg_type, batch_size):
         self.path = path
         self.batch_size = batch_size
