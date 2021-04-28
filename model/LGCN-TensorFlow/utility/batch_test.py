@@ -41,8 +41,12 @@ def test(sess, model, users_to_test, drop_flag=False, train_set_flag=0):
     for u_batch_id in range(n_user_batchs):
         start = u_batch_id * u_batch_size
         end = (u_batch_id + 1) * u_batch_size
-
+        
         user_batch = test_users[start: end]
+        
+        # Skip if the batch size is divisible with the total number of users
+        if len(user_batch) == 0:
+            continue
 
         if model.alg_type in ['csgcn']:
             rate_batch = []
