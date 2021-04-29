@@ -95,7 +95,6 @@ class LightGCN(object):
                 tf.summary.scalar('train_precision_first', self.train_precision_first)
                 self.train_precision_last = tf.placeholder(tf.float32)
                 tf.summary.scalar('train_precision_last', self.train_precision_last)
-                self.train_precision_last = tf.placeholder(tf.float32)
             
             elif self.eval_type == 'loo':
                 self.train_hitrate_first = tf.placeholder(tf.float32)
