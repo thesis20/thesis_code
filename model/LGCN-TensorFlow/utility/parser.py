@@ -27,7 +27,7 @@ def parse_args():
     parser.add_argument('--epoch', type=int, default=1000,
                         help='Number of epoch.')
     parser.add_argument('--eval_type', type=str, default='loo',
-                        help='type of evaluation from {fold_out, loo}')
+                        help='type of evaluation from {foldout, loo}')
 
     parser.add_argument('--embed_size', type=int, default=64,
                         help='Embedding size.')
