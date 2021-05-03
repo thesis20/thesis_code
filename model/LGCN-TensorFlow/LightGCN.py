@@ -26,6 +26,7 @@ class LightGCN(object):
         self.model_type = 'LightGCN'
         self.adj_type = args.adj_type
         self.alg_type = args.alg_type
+        self.eval_type = data_config['eval_type']
         self.pretrain_data = pretrain_data
         self.n_users = data_config['n_users']
         self.n_items = data_config['n_items']
@@ -79,20 +80,31 @@ class LightGCN(object):
         
         
         with tf.name_scope('TRAIN_ACC'):
-            self.train_rec_first = tf.placeholder(tf.float32)
-            #record for top(Ks[0])
-            tf.summary.scalar('train_rec_first', self.train_rec_first)
-            self.train_rec_last = tf.placeholder(tf.float32)
-            #record for top(Ks[-1])
-            tf.summary.scalar('train_rec_last', self.train_rec_last)
-            self.train_ndcg_first = tf.placeholder(tf.float32)
-            tf.summary.scalar('train_ndcg_first', self.train_ndcg_first)
-            self.train_ndcg_last = tf.placeholder(tf.float32)
-            tf.summary.scalar('train_ndcg_last', self.train_ndcg_last)
-            self.train_precision_first = tf.placeholder(tf.float32)
-            tf.summary.scalar('train_precision_first', self.train_precision_first)
-            self.train_precision_last = tf.placeholder(tf.float32)
-            tf.summary.scalar('train_precision_last', self.train_precision_last)
+            if self.eval_type == 'foldout':
+                self.train_rec_first = tf.placeholder(tf.float32)
+                #record for top(Ks[0])
+                tf.summary.scalar('train_rec_first', self.train_rec_first)
+                self.train_rec_last = tf.placeholder(tf.float32)
+                #record for top(Ks[-1])
+                tf.summary.scalar('train_rec_last', self.train_rec_last)
+                self.train_ndcg_first = tf.placeholder(tf.float32)
+                tf.summary.scalar('train_ndcg_first', self.train_ndcg_first)
+                self.train_ndcg_last = tf.placeholder(tf.float32)
+                tf.summary.scalar('train_ndcg_last', self.train_ndcg_last)
+                self.train_precision_first = tf.placeholder(tf.float32)
+                tf.summary.scalar('train_precision_first', self.train_precision_first)
+                self.train_precision_last = tf.placeholder(tf.float32)
+                tf.summary.scalar('train_precision_last', self.train_precision_last)
+            
+            elif self.eval_type == 'loo':
+                self.train_hitrate_first = tf.placeholder(tf.float32)
+                tf.summary.scalar('train_hitrate_first', self.train_hitrate_first)
+                self.train_mrr_first = tf.placeholder(tf.float32)
+                tf.summary.scalar('train_mrr_first', self.train_mrr_first)
+                self.train_hitrate_last = tf.placeholder(tf.float32)
+                tf.summary.scalar('train_hitrate_last', self.train_hitrate_last)
+                self.train_mrr_last = tf.placeholder(tf.float32)
+                tf.summary.scalar('train_mrr_last', self.train_mrr_last)
         self.merged_train_acc = tf.summary.merge(tf.get_collection(tf.GraphKeys.SUMMARIES, 'TRAIN_ACC'))
 
         with tf.name_scope('TEST_LOSS'):
@@ -107,18 +119,29 @@ class LightGCN(object):
         self.merged_test_loss = tf.summary.merge(tf.get_collection(tf.GraphKeys.SUMMARIES, 'TEST_LOSS'))
 
         with tf.name_scope('TEST_ACC'):
-            self.test_rec_first = tf.placeholder(tf.float32)
-            tf.summary.scalar('test_rec_first', self.test_rec_first)
-            self.test_rec_last = tf.placeholder(tf.float32)
-            tf.summary.scalar('test_rec_last', self.test_rec_last)
-            self.test_ndcg_first = tf.placeholder(tf.float32)
-            tf.summary.scalar('test_ndcg_first', self.test_ndcg_first)
-            self.test_ndcg_last = tf.placeholder(tf.float32)
-            tf.summary.scalar('test_ndcg_last', self.test_ndcg_last)
-            self.test_precision_first = tf.placeholder(tf.float32)
-            tf.summary.scalar('test_precision_first', self.test_precision_first)
-            self.test_precision_last = tf.placeholder(tf.float32)
-            tf.summary.scalar('test_precision_last', self.test_precision_last)
+            if self.eval_type == 'foldout':
+                self.test_rec_first = tf.placeholder(tf.float32)
+                tf.summary.scalar('test_rec_first', self.test_rec_first)
+                self.test_rec_last = tf.placeholder(tf.float32)
+                tf.summary.scalar('test_rec_last', self.test_rec_last)
+                self.test_ndcg_first = tf.placeholder(tf.float32)
+                tf.summary.scalar('test_ndcg_first', self.test_ndcg_first)
+                self.test_ndcg_last = tf.placeholder(tf.float32)
+                tf.summary.scalar('test_ndcg_last', self.test_ndcg_last)
+                self.test_precision_first = tf.placeholder(tf.float32)
+                tf.summary.scalar('test_precision_first', self.test_precision_first)
+                self.test_precision_last = tf.placeholder(tf.float32)
+                tf.summary.scalar('test_precision_last', self.test_precision_last)
+            
+            elif self.eval_type == 'loo':
+                self.test_hitrate_first = tf.placeholder(tf.float32)
+                tf.summary.scalar('test_hitrate_first', self.test_hitrate_first)
+                self.test_mrr_first = tf.placeholder(tf.float32)
+                tf.summary.scalar('test_mrr_first', self.test_mrr_first)
+                self.test_hitrate_last = tf.placeholder(tf.float32)
+                tf.summary.scalar('test_hitrate_last', self.test_hitrate_last)
+                self.test_mrr_last = tf.placeholder(tf.float32)
+                tf.summary.scalar('test_mrr_last', self.test_mrr_last)
         self.merged_test_acc = tf.summary.merge(tf.get_collection(tf.GraphKeys.SUMMARIES, 'TEST_ACC'))
         """
         *********************************************************
@@ -562,6 +585,7 @@ if __name__ == '__main__':
     config = dict()
     config['n_users'] = data_generator.n_users
     config['n_items'] = data_generator.n_items
+    config['eval_type'] = data_generator.eval_type
     if args.alg_type in ['csgcn']:
         config['n_contexts'] = data_generator.n_contexts
         config['n_user_sideinfo'] = data_generator.n_user_sideinfo
@@ -696,7 +720,7 @@ if __name__ == '__main__':
     train_writer = tf.summary.FileWriter(tensorboard_model_path +model.log_dir+ '/run_' + str(run_time), sess.graph)
     
     
-    loss_loger, pre_loger, rec_loger, ndcg_loger, hit_loger = [], [], [], [], []
+    loss_loger, pre_loger, rec_loger, ndcg_loger, hit_loger, mrr_loger = [], [], [], [], [], []
     stopping_step = 0
     should_stop = False
     
@@ -750,19 +774,31 @@ if __name__ == '__main__':
                 print(perf_str)
             continue
         users_to_test = list(data_generator.train_items.keys())
-        ret = test(sess, model, users_to_test ,drop_flag=True,train_set_flag=1)
-        perf_str = 'Epoch %d: train==[%.5f=%.5f + %.5f + %.5f], recall=[%s], precision=[%s], ndcg=[%s]' % \
-                   (epoch, loss, mf_loss, emb_loss, reg_loss, 
-                    ', '.join(['%.5f' % r for r in ret['recall']]),
-                    ', '.join(['%.5f' % r for r in ret['precision']]),
-                    ', '.join(['%.5f' % r for r in ret['ndcg']]))
-        print(perf_str)
-        summary_train_acc = sess.run(model.merged_train_acc, feed_dict={model.train_rec_first: ret['recall'][0],
-                                                                        model.train_rec_last: ret['recall'][-1],
-                                                                        model.train_ndcg_first: ret['ndcg'][0],
-                                                                        model.train_ndcg_last: ret['ndcg'][-1],
-                                                                        model.train_precision_first: ret['precision'][0],
-                                                                        model.train_precision_last: ret['precision'][-1]})
+        if data_generator.eval_type == 'foldout':
+            ret = test(sess, model, users_to_test ,drop_flag=True,train_set_flag=1)
+            perf_str = 'Epoch %d: train==[%.5f=%.5f + %.5f + %.5f], recall=[%s], precision=[%s], ndcg=[%s]' % \
+                    (epoch, loss, mf_loss, emb_loss, reg_loss, 
+                        ', '.join(['%.5f' % r for r in ret['recall']]),
+                        ', '.join(['%.5f' % r for r in ret['precision']]),
+                        ', '.join(['%.5f' % r for r in ret['ndcg']]))
+            print(perf_str)
+            summary_train_acc = sess.run(model.merged_train_acc, feed_dict={model.train_rec_first: ret['recall'][0],
+                                                                            model.train_rec_last: ret['recall'][-1],
+                                                                            model.train_ndcg_first: ret['ndcg'][0],
+                                                                            model.train_ndcg_last: ret['ndcg'][-1],
+                                                                            model.train_precision_first: ret['precision'][0],
+                                                                            model.train_precision_last: ret['precision'][-1]})
+        elif data_generator.eval_type == 'loo':
+            ret = test_loo(sess, model, users_to_test ,drop_flag=True,train_set_flag=1)
+            perf_str = 'Epoch %d: train==[%.5f=%.5f + %.5f + %.5f], hitrate=[%s], mrr=[%s]' % \
+                    (epoch, loss, mf_loss, emb_loss, reg_loss, 
+                        ', '.join(['%.5f' % r for r in ret['hitrate']]),
+                        ', '.join(['%.5f' % r for r in ret['mrr']]))
+            print(perf_str)
+            summary_train_acc = sess.run(model.merged_train_acc, feed_dict={model.train_hitrate_first: ret['hitrate'][0],
+                                                                            model.train_hitrate_last: ret['hitrate'][-1],
+                                                                            model.train_mrr_first: ret['mrr'][0],
+                                                                            model.train_mrr_last: ret['mrr'][-1],})
         train_writer.add_summary(summary_train_acc, epoch // 20)
         
         '''
@@ -799,32 +835,56 @@ if __name__ == '__main__':
         train_writer.add_summary(summary_test_loss, epoch // 20)
         t2 = time()
         users_to_test = list(data_generator.test_set.keys())
-        ret = test(sess, model, users_to_test, drop_flag=True)
-        summary_test_acc = sess.run(model.merged_test_acc,
-                                    feed_dict={model.test_rec_first: ret['recall'][0], model.test_rec_last: ret['recall'][-1],
-                                               model.test_ndcg_first: ret['ndcg'][0], model.test_ndcg_last: ret['ndcg'][-1],
-                                               model.test_precision_first: ret['precision'][0], model.test_precision_last: ret['precision'][-1]})
+        if data_generator.eval_type == 'foldout':
+            ret = test(sess, model, users_to_test, drop_flag=True)
+            summary_test_acc = sess.run(model.merged_test_acc,
+                                        feed_dict={model.test_rec_first: ret['recall'][0], model.test_rec_last: ret['recall'][-1],
+                                                model.test_ndcg_first: ret['ndcg'][0], model.test_ndcg_last: ret['ndcg'][-1],
+                                                model.test_precision_first: ret['precision'][0], model.test_precision_last: ret['precision'][-1]})
+        elif data_generator.eval_type == 'loo':
+            ret = test_loo(sess, model, users_to_test, drop_flag=True)
+            summary_test_acc = sess.run(model.merged_test_acc,
+                                        feed_dict={model.test_hitrate_first: ret['hitrate'][0], model.test_hitrate_last: ret['hitrate'][-1],
+                                                model.test_mrr_first: ret['mrr'][0], model.test_mrr_last: ret['mrr'][-1]})
+        
         train_writer.add_summary(summary_test_acc, epoch // 20)
                                                                                                  
                                                                                                  
         t3 = time()
         
         loss_loger.append(loss)
-        rec_loger.append(ret['recall'])
-        pre_loger.append(ret['precision'])
-        ndcg_loger.append(ret['ndcg'])
+        if data_generator.eval_type == 'foldout':
+            rec_loger.append(ret['recall'])
+            pre_loger.append(ret['precision'])
+            ndcg_loger.append(ret['ndcg'])
+            
+        elif data_generator.eval_type == 'loo':
+            hit_loger.append(ret['hitrate'])
+            mrr_loger.append(ret['mrr'])
+            
 
         if args.verbose > 0:
-            perf_str = 'Epoch %d [%.1fs + %.1fs]: test==[%.5f=%.5f + %.5f + %.5f], recall=[%s], ' \
-                       'precision=[%s], ndcg=[%s]' % \
-                       (epoch, t2 - t1, t3 - t2, loss_test, mf_loss_test, emb_loss_test, reg_loss_test, 
-                        ', '.join(['%.5f' % r for r in ret['recall']]),
-                        ', '.join(['%.5f' % r for r in ret['precision']]),
-                        ', '.join(['%.5f' % r for r in ret['ndcg']]))
+            if data_generator.eval_type == 'foldout':
+                perf_str = 'Epoch %d [%.1fs + %.1fs]: test==[%.5f=%.5f + %.5f + %.5f], recall=[%s], ' \
+                        'precision=[%s], ndcg=[%s]' % \
+                        (epoch, t2 - t1, t3 - t2, loss_test, mf_loss_test, emb_loss_test, reg_loss_test, 
+                            ', '.join(['%.5f' % r for r in ret['recall']]),
+                            ', '.join(['%.5f' % r for r in ret['precision']]),
+                            ', '.join(['%.5f' % r for r in ret['ndcg']]))
+            elif data_generator.eval_type == 'loo':
+                perf_str = 'Epoch %d [%.1fs + %.1fs]: test==[%.5f=%.5f + %.5f + %.5f], hitrate=[%s], ' \
+                        'mrr=[%s]' % \
+                        (epoch, t2 - t1, t3 - t2, loss_test, mf_loss_test, emb_loss_test, reg_loss_test, 
+                            ', '.join(['%.5f' % r for r in ret['hitrate']]),
+                            ', '.join(['%.5f' % r for r in ret['mrr']]))
             print(perf_str)
-            
-        cur_best_pre_0, stopping_step, should_stop = early_stopping(ret['recall'][0], cur_best_pre_0,
-                                                                    stopping_step, expected_order='acc', flag_step=5)
+        
+        if data_generator.eval_type == 'foldout':
+            cur_best_pre_0, stopping_step, should_stop = early_stopping(ret['recall'][0], cur_best_pre_0,
+                                                                        stopping_step, expected_order='acc', flag_step=5)
+        elif data_generator.eval_type == 'loo':
+            cur_best_pre_0, stopping_step, should_stop = early_stopping(ret['hitrate'][0], cur_best_pre_0,
+                                                                        stopping_step, expected_order='acc', flag_step=5)
 
         # *********************************************************
         # early stopping when cur_best_pre_0 is decreasing for ten successive steps.
@@ -833,20 +893,39 @@ if __name__ == '__main__':
 
         # *********************************************************
         # save the user & item embeddings for pretraining.
-        if ret['recall'][0] == cur_best_pre_0 and args.save_flag == 1:
-            save_saver.save(sess, weights_save_path + '/weights', global_step=epoch)
-            print('save the weights in path: ', weights_save_path)
-    recs = np.array(rec_loger)
-    pres = np.array(pre_loger)
-    ndcgs = np.array(ndcg_loger)
+        if data_generator.eval_type == 'foldout':
+            if ret['recall'][0] == cur_best_pre_0 and args.save_flag == 1:
+                save_saver.save(sess, weights_save_path + '/weights', global_step=epoch)
+                print('save the weights in path: ', weights_save_path)
+        elif data_generator.eval_type == 'loo':
+            if ret['hitrate'][0] == cur_best_pre_0 and args.save_flag == 1:
+                save_saver.save(sess, weights_save_path + '/weights', global_step=epoch)
+                print('save the weights in path: ', weights_save_path)
+    
+    if data_generator.eval_type == 'foldout':
+        recs = np.array(rec_loger)
+        pres = np.array(pre_loger)
+        ndcgs = np.array(ndcg_loger)
+        
+        best_rec_0 = max(recs[:, 0])
+        idx = list(recs[:, 0]).index(best_rec_0)
 
-    best_rec_0 = max(recs[:, 0])
-    idx = list(recs[:, 0]).index(best_rec_0)
+        final_perf = "Best Iter=[%d]@[%.1f]\trecall=[%s], precision=[%s], ndcg=[%s]" % \
+                    (idx, time() - t0, '\t'.join(['%.5f' % r for r in recs[idx]]),
+                    '\t'.join(['%.5f' % r for r in pres[idx]]),
+                    '\t'.join(['%.5f' % r for r in ndcgs[idx]]))
+                    
+    elif data_generator.eval_type == 'loo':
+        hitrates = np.array(hit_loger)
+        mrrs = np.array(mrr_loger)
 
-    final_perf = "Best Iter=[%d]@[%.1f]\trecall=[%s], precision=[%s], ndcg=[%s]" % \
-                 (idx, time() - t0, '\t'.join(['%.5f' % r for r in recs[idx]]),
-                  '\t'.join(['%.5f' % r for r in pres[idx]]),
-                  '\t'.join(['%.5f' % r for r in ndcgs[idx]]))
+        best_hitrate_0 = max(hitrates[:, 0])
+        idx = list(hitrates[:, 0]).index(best_hitrate_0)
+
+        final_perf = "Best Iter=[%d]@[%.1f]\t hitrate=[%s], mrr=[%s]" % \
+                    (idx, time() - t0, '\t'.join(['%.5f' % r for r in hitrates[idx]]),
+                    '\t'.join(['%.5f' % r for r in mrrs[idx]]))
+                    
     print(final_perf)
 
     save_path = '%soutput/%s/%s.result' % (args.proj_path, args.dataset, model.model_type)
