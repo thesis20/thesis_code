@@ -11,12 +11,15 @@ import scipy.sparse as sp
 from time import time
 import pandas as pd
 
+rd.seed(2021)
 class Data(object):
-    def __init__(self, path, alg_type, batch_size):
+    def __init__(self, path, alg_type, batch_size, eval_type):
         self.path = path
         self.batch_size = batch_size
         self.loo_eval = False
         self.alg_type = alg_type
+        self.eval_type = eval_type
+        rd.seed(2021)
 
         if 'ml100k' in self.path:
             self.user_column_name = 'userId'
@@ -33,7 +36,7 @@ class Data(object):
         if 'yelpnc' in self.path:
             self.user_column_name = 'user_id'
             self.item_column_name = 'business_id'
-            self.context_column_list = ['month','day_of_week','timeofday', 'hour']
+            self.context_column_list = ['day_of_week','hour']
             self.item_sideinfo_multihot = ['Burgers','ChickenWings','Bars','Restaurants','Nightlife','SportsBars','American(Traditional)','Steakhouses','Tapas/SmallPlates','Breakfast&Brunch','American(New)','Pubs','CocktailBars','TapasBars','Gastropubs','Food','Coffee&Tea','BeerBar','Breweries','Bakeries','Southern','SoulFood','Arts&Entertainment','Sandwiches','MusicVenues','Pizza','Italian','WineBars','IceCream&FrozenYogurt','FastFood','Chinese','SushiBars','Thai','AsianFusion','Japanese','EventPlanning&Services','Venues&EventSpaces','Mexican','Vietnamese','Diners','ComfortFood','Cafes','Salad','French','Caterers','Shopping','Beer','Wine&Spirits','Delis','Barbeque','Seafood','Soup','Tex-Mex','Fashion','DepartmentStores','Lounges','Vegetarian','ActiveLife','Desserts','LatinAmerican','Cinema','Vegan','Gluten-Free','Home&Garden','Cajun/Creole','Bagels','Beauty&Spas','SpecialtyFood','Mediterranean','Grocery','Noodles','FoodTrucks','LocalFlavor','Greek','Indian','EthnicFood','BeerGardens','Korean','Flowers&Gifts']
             self.item_sideinfo_onehot = ['city']
             self.user_sideinfo_onehot = ['yelping_since', 'fans', 'average_stars']
@@ -41,8 +44,8 @@ class Data(object):
         if 'yelpon' in self.path:
             self.user_column_name = 'user_id'
             self.item_column_name = 'business_id'
-            self.context_column_list = ['date']
-            self.item_sideinfo_multihot = ['SpecialtyFood','Restaurants','EthnicFood','Chinese','Caterers','Food','EventPlanning&Services','Nightlife','Steakhouses','Bars','Seafood','SportsBars','Canadian(New)','American(Traditional)','Burgers','Italian','CocktailBars','Mediterranean','Hotels&Travel','Venues&EventSpaces','Gastropubs','Arts&Entertainment','Mexican','Barbeque','ComfortFood','Thai','AsianFusion','Pakistani','Buffets','American(New)','Beauty&Spas','Grocery','Coffee&Tea','FastFood','Pizza','Salad','SushiBars','Bakeries','French','Breakfast&Brunch','Korean','IceCream&FrozenYogurt','Noodles','Desserts','Cafes','Diners','Soup','Sandwiches','Ramen','Japanese','Pubs','Vietnamese','Shopping','MiddleEastern','Halal','Taiwanese','Vegan','TeaRooms','Vegetarian','DimSum','WineBars','JuiceBars&Smoothies','Fashion','Caribbean','Beer','Wine&Spirits','ChickenWings','Lounges','TapasBars','Tapas/SmallPlates','Indian','BubbleTea','ActiveLife','Greek','Gluten-Free']
+            self.context_column_list = ['day_of_week', 'hour']
+            self.item_sideinfo_multihot = ['Restaurants','Nightlife','Steakhouses','Bars','Seafood','SportsBars','Canadian(New)','American(Traditional)','Burgers','Italian','CocktailBars','Mediterranean','Gastropubs','Arts&Entertainment','Hotels&Travel','Mexican','EventPlanning&Services','Chinese','Thai','AsianFusion','Buffets','American(New)','ComfortFood','Venues&EventSpaces','Food','Grocery','SpecialtyFood','EthnicFood','Pizza','Salad','SushiBars','French','Breakfast&Brunch','Korean','IceCream&FrozenYogurt','Caterers','Noodles','Desserts','Cafes','Diners','Ramen','Japanese','Soup','Pubs','Vietnamese','Coffee&Tea','Shopping','MiddleEastern','Halal','Taiwanese','Barbeque','Vegan','TeaRooms','Vegetarian','Sandwiches','Bakeries','DimSum','ChickenWings','WineBars','Beer','Wine&Spirits','Lounges','TapasBars','Tapas/SmallPlates','Indian','BubbleTea','JuiceBars&Smoothies','ActiveLife','FastFood','Greek','Gluten-Free']
             self.item_sideinfo_onehot = ['city']
             self.user_sideinfo_onehot = ['yelping_since', 'fans', 'average_stars']
 
@@ -71,6 +74,24 @@ class Data(object):
 
         if self.alg_type in ['csgcn']:
             self.test_context_combinations = self.get_test_context_combinations()
+            self.context_interactions = self.get_context_interactions()
+            
+    def get_context_interactions(self):
+        # (context) -> [itemId]
+        context_interactions_dict = dict()
+        for index, row in self.train_df.iterrows():
+            context_list = []
+            for context in self.context_column_list:
+                context_list.append(row[context])
+            
+            context_list = tuple(context_list)
+            if context_list not in context_interactions_dict:
+                context_interactions_dict[context_list] = [row[self.item_column_name]]
+            
+            if self.item_column_name not in context_interactions_dict[context_list]:
+                context_interactions_dict[context_list].append(row[self.item_column_name])
+                
+        return context_interactions_dict
 
     def sideinfo_counter(self):
         n_user_sideinfo = 0
@@ -92,7 +113,7 @@ class Data(object):
         for _, row in self.test_df.iterrows():
             context_list = []
             for context in self.context_column_list:
-                context_list.append(self.context_offset_dict[context + str(row[context])])
+                context_list.append(context + str(row[context]))
             combinations.add(tuple(context_list))
         return combinations
 
@@ -193,6 +214,7 @@ class Data(object):
                     offset += 1
 
             self.context_offset_dict = context_offset_dict
+            self.offset_to_context_dict = dict((v,k) for k,v in self.context_offset_dict.items())
             self.item_context_offset_dict = item_context_offset_dict
             self.item_sideinfo_offset_dict = item_sideinfo_offset_dict
             self.user_sideinfo_offset_dict = user_sideinfo_offset_dict
@@ -430,12 +452,18 @@ class Data(object):
             while True:
                 if len(neg_items) == num: break
                 neg_id = np.random.randint(low=0, high=self.n_items,size=1)[0]
+                if neg_id not in self.train_items[u] and neg_id not in neg_items:
+                    neg_items.append(neg_id)
+            return neg_items
 
-                if self.alg_type in ['csgcn']:
-                    if neg_id not in [itemId for itemId,_ in self.train_items[u]] and neg_id not in neg_items:
-                        neg_items.append(neg_id)
-                else:
-                    if neg_id not in self.train_items[u] and neg_id not in neg_items:
+        def sample_neg_items_for_u_csgcn(u, num, context):
+            neg_items = []
+            while True:
+                if len(neg_items) == num: break
+                neg_id = np.random.randint(low=0, high=self.n_items,size=1)[0]
+                
+                if neg_id not in [itemId for itemId,_ in self.train_items[u]] and neg_id not in neg_items:
+                    if neg_id not in self.context_interactions[context]:
                         neg_items.append(neg_id)
             return neg_items
 
@@ -447,7 +475,10 @@ class Data(object):
         for u in users:
             if self.alg_type in ['csgcn']:
                 pos_item_id, context = sample_pos_items_for_u(u, 1)[0]
-                neg_item_id = sample_neg_items_for_u(u, 1)[0]
+                if self.alg_type in ['csgcn']:
+                    neg_item_id = sample_neg_items_for_u_csgcn(u, 1, context)[0]
+                else:
+                    neg_item_id = sample_neg_items_for_u(u, 1)[0]
                 pos_items.append(pos_item_id)
                 neg_items.append(neg_item_id)
 
