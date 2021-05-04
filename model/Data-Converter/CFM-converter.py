@@ -43,7 +43,11 @@ for i, row in train.iterrows():
     one_hot_indices_user =  []
 
     for index, value in enumerate(row):
-        if index != 1:
+        # index 6 is city, need to look up the offset in the dict
+        if index == 6:
+            one_hot_indices_user.append(city_onehot[value] + current_offset)
+            current_offset = current_offset + all_offsets[index] 
+        else:
             one_hot_indices_user.append(value + current_offset) 
             current_offset = current_offset + all_offsets[index]
 
@@ -57,13 +61,17 @@ for i, row in test.iterrows():
     one_hot_indices_user =  []
 
     for index, value in enumerate(row):
-        if index != 1:
+        # index 6 is city, need to look up the offset in the dict
+        if index == 6:
+            one_hot_indices_user.append(city_onehot[value] + current_offset)
+            current_offset = current_offset + all_offsets[index] 
+        else:
             one_hot_indices_user.append(value + current_offset) 
             current_offset = current_offset + all_offsets[index]
 
 
     cfm_string = (",".join(str(x) for x in one_hot_indices_user)).replace(',', '-')
-    cfm_string = cfm_string + ',' + str(train_items[i]) + '-' + str(n_items) 
+    cfm_string = cfm_string + ',' + str(test_items[i]) + '-' + str(n_items) 
     cfm_test.append(cfm_string)
 
 cfm_train_df = pd.DataFrame(cfm_train)
