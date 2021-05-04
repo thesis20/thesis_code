@@ -70,6 +70,21 @@ def ndcg_at_k(r, k, method=1):
         return 0.
     return dcg_at_k(r, k, method) / dcg_max
 
+def lgcn_ndcg(rank, k, ground_truth):
+    rank = np.asfarray(rank)[:k]
+    len_rank = len(rank)
+    len_gt = len(ground_truth)
+    idcg_len = min(len_gt, len_rank)
+
+    # calculate idcg
+    idcg = np.cumsum(1.0 / np.log2(np.arange(2, len_rank + 2)))
+    idcg[idcg_len:] = idcg[idcg_len-1]
+
+    # idcg = np.cumsum(1.0/np.log2(np.arange(2, len_rank+2)))
+    dcg = np.cumsum([1.0/np.log2(idx+2) if item!=0 else 0.0 for idx, item in enumerate(rank)])
+    result = dcg/idcg
+    return np.mean(result)
+
 
 def recall_at_k(r, k, all_pos_num):
     r = np.asfarray(r)[:k]

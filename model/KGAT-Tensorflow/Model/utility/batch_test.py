@@ -103,7 +103,7 @@ def get_performance(user_pos_test, r, auc, Ks):
     for K in Ks:
         precision.append(metrics.precision_at_k(r, K))
         recall.append(metrics.recall_at_k(r, K, len(user_pos_test)))
-        ndcg.append(metrics.ndcg_at_k(r, K))
+        ndcg.append(metrics.lgcn_ndcg(r, K, user_pos_test))
         hit_ratio.append(metrics.hit_at_k(r, K))
 
     return {'recall': np.array(recall), 'precision': np.array(precision),
@@ -210,7 +210,7 @@ def test(sess, model, users_to_test, drop_flag=False, batch_test_flag=False):
         user_batch_rating_uid = zip(rate_batch, user_batch)
         batch_result = pool.map(test_one_user, user_batch_rating_uid)
         count += len(batch_result)
-
+        
         for re in batch_result:
             result['precision'] += re['precision']/n_test_users
             result['recall'] += re['recall']/n_test_users
