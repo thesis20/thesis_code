@@ -24,15 +24,15 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Run FM.")
     parser.add_argument('--path', nargs='?', default='Data/',
                         help='Input data path.')
-    parser.add_argument('--topk', nargs='?', default=20,
+    parser.add_argument('--topk', nargs='?', default=10,
                         help='Topk recommendation list')
-    parser.add_argument('--dataset', nargs='?', default='movielens-100k',
+    parser.add_argument('--dataset', nargs='?', default='frappe2',
                         help='Choose a dataset.')
     parser.add_argument('--epoch', type=int, default=1000,
                         help='Number of epochs.')
     parser.add_argument('--pretrain', type=int, default=-1,
                         help='flag for pretrain. 1: initialize from pretrain; 0: randomly initialize; -1: save the model to pretrain file')
-    parser.add_argument('--batch_size', type=int, default=95,
+    parser.add_argument('--batch_size', type=int, default=54,
                         help='Batch size.')
     parser.add_argument('--hidden_factor', type=int, default=64,
                         help='Number of hidden factors.')
@@ -286,9 +286,9 @@ class FM(BaseEstimator, TransformerMixin):
 
     def evaluate(self):
         self.graph.finalize()
-        count = [0, 0, 0, 0]
-        rank = [[], [], [], []]
-        topK = [5, 10, 15, 20]
+        count = [0, 0, 0]
+        rank = [[], [], []]
+        topK = [20,50,100]
         for index in range(len(data.Test_data['X_user'])):
             user_features = data.Test_data['X_user'][index]
             item_features = data.Test_data['X_item'][index]
@@ -299,17 +299,20 @@ class FM(BaseEstimator, TransformerMixin):
             # delete visited scores
             user_id = data.binded_users["-".join([str(item) for item in user_features[0:]])]  # get userID
             # logger.info(user_id)
-            visited = data.user_positive_list[user_id]  # get positive list for the userID
-            scores = np.delete(scores, visited)
-            # whether hit
-            sorted_scores = sorted(scores, reverse=True)
+            if user_id < data.user_bind_train_M:
+                visited = data.user_positive_list[user_id]  # get positive list for the userID
+                scores = np.delete(scores, visited)
+                # whether hit
+                sorted_scores = sorted(scores, reverse=True)
+                sorted_scores.index(true_item_score)
 
-            label = []
-            for i in range(len(topK)):
-                label.append(sorted_scores[topK[i] - 1])
-                if true_item_score >= label[i]:
-                    count[i] = count[i] + 1
-                    rank[i].append(sorted_scores.index(true_item_score) + 1)
+                label = []
+                for i in range(len(topK)):
+                    label.append(sorted_scores[topK[i] - 1])
+                    if true_item_score >= label[i]:
+                        count[i] = count[i] + 1
+                        rank[i].append(sorted_scores.index(true_item_score) + 1)
+                    
 
         for i in range(len(topK)):
             mrr = 0
@@ -320,7 +323,7 @@ class FM(BaseEstimator, TransformerMixin):
                 ndcg = ndcg + float(1.0) / np.log2(item + 1)
             mrr = mrr / len(data.Test_data['X_user'])
             ndcg = ndcg / len(data.Test_data['X_user'])
-            k = (i + 1) * 5
+            k = topK[i]
             logger.info("top:%f" % k)
             logger.info("the Hit Rate is: %f" % hit_rate)
             logger.info("the MRR is: %f" % mrr)

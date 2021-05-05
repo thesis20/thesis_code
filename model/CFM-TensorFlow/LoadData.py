@@ -30,9 +30,11 @@ class LoadData(object):
         print("field_M", self.user_field_M + self.item_field_M)
         self.item_bind_M = self.bind_item()  # assaign a userID for a specific user-context
         self.user_bind_M = self.bind_user()  # assaign a itemID for a specific item-feature
+        self.user_bind_train_M = self.bind_user_train()
         print("item_bind_M", len(self.binded_items.values()))
         print("user_bind_M", len(self.binded_users.values()))
-        self.user_positive_list = self.get_positive_list(self.trainfile)  # userID positive itemID
+        print("user_bind_train_M", len(self.binded_users_train.values()))
+        self.user_positive_list = self.get_positive_list(self.trainfile, self.testfile)  # userID positive itemID
         self.Train_data, self.Test_data = self.construct_data()
 
     def get_length(self):
@@ -89,6 +91,15 @@ class LoadData(object):
             line = f.readline()
         f.close()
 
+    def bind_user_train(self):
+        '''
+        Map the item fields in all files, kept in self.item_fields dictionary
+        :return:
+        '''
+        self.binded_users_train = {}
+        self.bind_u_train(self.trainfile)
+        return len(self.binded_users_train)
+
     def bind_user(self):
         '''
         Map the item fields in all files, kept in self.item_fields dictionary
@@ -116,14 +127,32 @@ class LoadData(object):
                 i = i + 1
             line = f.readline()
         f.close()
+    
+    def bind_u_train(self, file):
+        '''
+        Read a feature file and bind
+        :param file:
+        :return:
+        '''
+        f = open(file)
+        line = f.readline()
+        i = len(self.binded_users_train)
+        while line:
+            features = line.strip().split(',')
+            user_features = features[0]
+            if user_features not in self.binded_users_train:
+                self.binded_users_train[user_features] = i
+                i = i + 1
+            line = f.readline()
+        f.close()
 
-    def get_positive_list(self, file):
+    def get_positive_list(self, train, test):
         '''
         Obtain positive item lists for each user
         :param file: train file
         :return:
         '''
-        f = open(file)
+        f = open(train)
         line = f.readline()
         user_positive_list = {}
         while line:
@@ -136,6 +165,22 @@ class LoadData(object):
                 user_positive_list[user_id] = [item_id]
             line = f.readline()
         f.close()
+
+        
+        #f = open(test)
+        #line = f.readline()
+        #while line:
+            #features = line.strip().split(',')
+            #user_id = self.binded_users[features[0]]
+            #item_id = self.binded_items[features[1]]
+            #if user_id in user_positive_list:
+                #user_positive_list[user_id].append(item_id)
+            #else:
+                #user_positive_list[user_id] = [item_id]
+            #line = f.readline()
+        #f.close()
+
+
         return user_positive_list
 
     def construct_data(self):
