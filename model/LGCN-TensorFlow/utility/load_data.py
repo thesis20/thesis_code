@@ -76,6 +76,9 @@ class Data(object):
             self.test_context_combinations = self.get_test_context_combinations()
             self.context_interactions = self.get_context_interactions()
             
+        self.print_statistics()
+        
+            
     def get_context_interactions(self):
         # (context) -> [itemId]
         context_interactions_dict = dict()
@@ -111,6 +114,17 @@ class Data(object):
         combinations = set()
 
         for _, row in self.test_df.iterrows():
+            context_list = []
+            for context in self.context_column_list:
+                context_list.append(context + str(row[context]))
+            combinations.add(tuple(context_list))
+        return combinations
+
+    def get_full_context_combinations(self):
+        # get the unique context combinations in the test set
+        combinations = set()
+
+        for _, row in self.full_df.iterrows():
             context_list = []
             for context in self.context_column_list:
                 context_list.append(context + str(row[context]))
@@ -169,7 +183,6 @@ class Data(object):
         self.n_items = self.full_df[self.item_column_name].max()
         self.n_users = self.full_df[self.user_column_name].max()
         self.n_contexts = sum([self.full_df[context].nunique() for context in self.context_column_list])
-
         self.create_positive_interactions()
 
 
@@ -221,7 +234,6 @@ class Data(object):
 
         self.n_items += 1
         self.n_users += 1
-        self.print_statistics()
 
         self.R = sp.dok_matrix((self.n_users, self.n_items), dtype=np.float32)
 
@@ -310,6 +322,7 @@ class Data(object):
             adj_mat = sp.load_npz(self.path + prefix + '/s_adj_mat.npz')
             norm_adj_mat = sp.load_npz(self.path + prefix + '/s_norm_adj_mat.npz')
             mean_adj_mat = sp.load_npz(self.path + prefix + '/s_mean_adj_mat.npz')
+            csgcn_adj_mat = sp.load_npz(self.path + prefix + '/s_csgcn_adj_mat.npz')
             print('already load adj matrix', adj_mat.shape, time() - t1)
 
         except Exception:
@@ -327,19 +340,26 @@ class Data(object):
 
             d_inv[np.isinf(d_inv)] = 0.
             d_mat_inv = sp.diags(d_inv)
+            d_mat_sq_inv = sp.diags(np.sqrt(2)*d_inv)
+            csgcn_adj_mat = d_mat_sq_inv.dot(adj_mat)
             norm_adj = d_mat_inv.dot(adj_mat)
             norm_adj = norm_adj.dot(d_mat_inv)
             print('generate pre adjacency matrix.')
             pre_adj_mat = norm_adj.tocsr()
             sp.save_npz(self.path + prefix + '/s_pre_adj_mat.npz', norm_adj)
+            sp.save_npz(self.path + prefix + '/s_csgcn_adj_mat.npz', csgcn_adj_mat)
+            
+            print("SHAPES")
+            print(norm_adj.shape)
+            print(csgcn_adj_mat.shape)
 
-        return adj_mat, norm_adj_mat, mean_adj_mat,pre_adj_mat
+        return adj_mat, norm_adj_mat, mean_adj_mat,pre_adj_mat,csgcn_adj_mat
 
     def create_adj_mat(self):
         t1 = time()
 
         def csgcn_adj():
-            adj_size = self.n_users + self.n_items + self.n_user_sideinfo + self.n_item_sideinfo
+            adj_size = self.n_users + self.n_items + self.n_user_sideinfo + self.n_item_sideinfo + self.n_contexts
             adj_mat = sp.dok_matrix((adj_size, adj_size), dtype=np.float32).tolil()
             R = self.R.tolil()
 
@@ -349,6 +369,7 @@ class Data(object):
 
                 user_sideinfo_indexes = self.user_sideinfo_dict[userId]
                 item_sideinfos = self.item_sideinfo_dict[itemId] # (OneHot, Multihot)
+                context_indexes = [self.context_offset_dict[column + str(row[column])] for column in self.context_column_list]
 
                 item_offset = self.n_users + itemId
 
@@ -368,6 +389,16 @@ class Data(object):
 
                 adj_mat[userId, item_offset] = 1 # R
                 adj_mat[item_offset, userId] = 1 # Rt
+                
+                # Add context to last column
+                for context_index in context_indexes:
+                    context_offset = self.n_users + self.n_items + self.n_user_sideinfo + self.n_item_sideinfo + context_index
+                    adj_mat[userId, context_offset] = 1 # UC
+                    adj_mat[item_offset, context_offset] = 1 # IC
+                # 2I to counter normalization term
+                for i in range(self.n_contexts):
+                    offset = self.n_users + self.n_items + self.n_user_sideinfo + self.n_item_sideinfo
+                    adj_mat[i + offset,i + offset] = 2
 
             return adj_mat
 
@@ -427,7 +458,7 @@ class Data(object):
             self.neg_pools[u] = pools
         print('refresh negative pools', time() - t1)
 
-    def sample(self):
+    def sample(self, adj_type=None):
         if self.batch_size <= self.n_users:
             users = rd.sample(list(self.exist_users), self.batch_size)
         else:
@@ -475,26 +506,31 @@ class Data(object):
         for u in users:
             if self.alg_type in ['csgcn']:
                 pos_item_id, context = sample_pos_items_for_u(u, 1)[0]
-                if self.alg_type in ['csgcn']:
-                    neg_item_id = sample_neg_items_for_u_csgcn(u, 1, context)[0]
-                else:
-                    neg_item_id = sample_neg_items_for_u(u, 1)[0]
+                neg_item_id = sample_neg_items_for_u_csgcn(u, 1, context)[0]
                 pos_items.append(pos_item_id)
                 neg_items.append(neg_item_id)
 
                 pos_item_context, neg_item_context = [], []
-                for index, context_col in enumerate(self.context_column_list, 0):
-                    pos_item_context.append(self.item_context_offset_dict[(pos_item_id, context_col + str(context[index]))])
-                    neg_item_context.append(self.item_context_offset_dict[(neg_item_id, context_col + str(context[index]))])
+                
+                if adj_type in ['csgcn']:
+                    for index, context_col in enumerate(self.context_column_list, 0):
+                        pos_item_context.append(self.context_offset_dict[context_col + str(context[index])])
+                else:
+                    for index, context_col in enumerate(self.context_column_list, 0):
+                        pos_item_context.append(self.item_context_offset_dict[(pos_item_id, context_col + str(context[index]))])
+                        neg_item_context.append(self.item_context_offset_dict[(neg_item_id, context_col + str(context[index]))])
+                    neg_items_context.append(neg_item_context)
 
                 pos_items_context.append(pos_item_context)
-                neg_items_context.append(neg_item_context)
             else:
                 pos_items += sample_pos_items_for_u(u, 1)
                 neg_items += sample_neg_items_for_u(u, 1)
 
         if self.alg_type in ['csgcn']:
-            return users, pos_items, neg_items, pos_items_context, neg_items_context
+            if adj_type in ['csgcn']:
+                return users, pos_items, neg_items, pos_items_context
+            else:
+                return users, pos_items, neg_items, pos_items_context, neg_items_context
         else:
             return users, pos_items, neg_items
 
@@ -568,6 +604,7 @@ class Data(object):
         print('n_users=%d, n_items=%d' % (self.n_users, self.n_items))
         print('n_interactions=%d' % (self.n_train + self.n_test))
         print('n_train=%d, n_test=%d, sparsity=%.5f' % (self.n_train, self.n_test, (self.n_train + self.n_test)/(self.n_users * self.n_items)))
+        print('n_contexts=%d, n_sideinfo=%d' % (self.n_contexts, (self.n_user_sideinfo + self.n_item_sideinfo)))
 
         if self.batch_size != self.n_users // 10:
             print(f"!! Wrong batch size, you have {self.batch_size}, consider {self.n_users // 10} !!")
