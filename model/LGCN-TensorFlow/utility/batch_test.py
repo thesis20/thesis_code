@@ -150,8 +150,8 @@ def test_loo(sess, model, users_to_test, drop_flag=False, train_set_flag=0):
                 item_contexts = []
                 for item in item_batch:
                     item_context = []
-                    for value in context:
-                        value = data_generator.offset_to_context_dict[value]
+                    for context_index, value in enumerate(context):
+                        value = data_generator.context_column_list[context_index] + str(value)
                         item_context.append(data_generator.item_context_offset_dict[(item, value)])
                     item_contexts.append(item_context)
                 if drop_flag == False:
