@@ -16,7 +16,7 @@ def parse_args():
     parser.add_argument('--proj_path', nargs='?', default='',
                         help='Project path.')
 
-    parser.add_argument('--dataset', nargs='?', default='frappe',
+    parser.add_argument('--dataset', nargs='?', default='yelpnc',
                         help='Choose a dataset from {ml100k, frappe, yelpnc, yelpon, ml1m}')
     parser.add_argument('--pretrain', type=int, default=0,
                         help='0: No pretrain, -1: Pretrain with the learned embeddings, 1:Pretrain with stored models.')
@@ -24,7 +24,7 @@ def parse_args():
                         help='Interval of evaluation.')
     parser.add_argument('--is_norm', type=int, default=1,
                     help='Interval of evaluation.')
-    parser.add_argument('--epoch', type=int, default=40,
+    parser.add_argument('--epoch', type=int, default=200,
                         help='Number of epoch.')
     parser.add_argument('--eval_type', type=str, default='foldout',
                         help='type of evaluation from {foldout, loo}')
@@ -33,7 +33,7 @@ def parse_args():
                         help='Embedding size.')
     parser.add_argument('--layer_size', nargs='?', default='[64, 64, 64, 64]',
                         help='Output sizes of every layer')
-    parser.add_argument('--batch_size', type=int, default=54,
+    parser.add_argument('--batch_size', type=int, default=227,
                         help='Batch size.')
 
     parser.add_argument('--regs', nargs='?', default='[1e-5,1e-5,1e-2]',

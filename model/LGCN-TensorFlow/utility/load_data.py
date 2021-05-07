@@ -534,7 +534,7 @@ class Data(object):
         else:
             return users, pos_items, neg_items
 
-    def sample_test(self):
+    def sample_test(self, adj_type=None):
         if self.batch_size <= self.n_users:
             users = rd.sample(self.test_set.keys(), self.batch_size)
         else:
@@ -580,20 +580,25 @@ class Data(object):
                 neg_items.append(neg_item_id)
 
                 pos_item_context, neg_item_context = [], []
-                for index, context_col in enumerate(self.context_column_list, 0):
-                    pos_item_context.append(
-                        self.item_context_offset_dict[(pos_item_id, context_col + str(context[index]))])
-                    neg_item_context.append(
-                        self.item_context_offset_dict[(neg_item_id, context_col + str(context[index]))])
+                if adj_type in ['csgcn']:
+                    for index, context_col in enumerate(self.context_column_list, 0):
+                        pos_item_context.append(self.context_offset_dict[context_col + str(context[index])])
+                else:
+                    for index, context_col in enumerate(self.context_column_list, 0):
+                        pos_item_context.append(self.item_context_offset_dict[(pos_item_id, context_col + str(context[index]))])
+                        neg_item_context.append(self.item_context_offset_dict[(neg_item_id, context_col + str(context[index]))])
+                    neg_items_context.append(neg_item_context)
 
                 pos_items_context.append(pos_item_context)
-                neg_items_context.append(neg_item_context)
             else:
                 pos_items += sample_pos_items_for_u(u, 1)
                 neg_items += sample_neg_items_for_u(u, 1)
 
         if self.alg_type in ['csgcn']:
-            return users, pos_items, neg_items, pos_items_context, neg_items_context
+            if adj_type in ['csgcn']:
+                return users, pos_items, neg_items, pos_items_context
+            else:
+                return users, pos_items, neg_items, pos_items_context, neg_items_context
         else:
             return users, pos_items, neg_items
 
