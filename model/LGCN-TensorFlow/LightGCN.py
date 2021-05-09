@@ -511,10 +511,8 @@ class LightGCN(object):
             ic_pos = tf.multiply(pos_items, context, name='ic_pos_mul')
             ui_neg = tf.multiply(users, neg_items, name='ui_neg_mul')
             ic_neg = tf.multiply(neg_items, context, name='ic_neg_mul')
-            pos_sum = tf.add_n([uc, ui_pos, ic_pos])
-            neg_sum = tf.add_n([uc, ui_neg, ic_neg])
-            pos_scores = 0.5 * tf.reduce_sum(pos_sum, axis=1)
-            neg_scores = 0.5 * tf.reduce_sum(neg_sum, axis=1)
+            pos_scores = 0.5 * tf.reduce_sum((uc+ui_pos+ic_pos), axis=1)
+            neg_scores = 0.5 * tf.reduce_sum((uc+ui_neg+ic_neg), axis=1)
             regularizer = tf.nn.l2_loss(self.u_g_embeddings_pre) + tf.nn.l2_loss(
                         self.pos_i_g_embeddings_pre) + tf.nn.l2_loss(self.neg_i_g_embeddings_pre) \
                         + tf.nn.l2_loss(self.context_embeddings)
