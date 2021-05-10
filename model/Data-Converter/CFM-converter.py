@@ -4,9 +4,9 @@ import pandas as pd
 
 class CFMConverter():
     def __init__(self, path, item_column_name):
-        self.train = pd.read_csv(path + '/train.txt', sep=',', )
-        self.test = pd.read_csv(path + '/test.txt', sep=',', )
-        self.ratings = pd.read_csv(path + '/out.txt', sep=',', )
+        self.train = pd.read_csv('model/Data-Converter/' + path +  '/train.txt', sep=',', )
+        self.test = pd.read_csv('model/Data-Converter/' + path + '/test.txt', sep=',', )
+        self.ratings = pd.read_csv('model/Data-Converter/' + path + '/out.txt', sep=',', )
         self.train_items = self.train[item_column_name]
         self.test_items = self.test[item_column_name]
         self.all_items = self.ratings[item_column_name]
@@ -14,7 +14,7 @@ class CFMConverter():
         self.test.drop(item_column_name, inplace=True, axis=1)
         self.ratings.drop(item_column_name, inplace=True, axis=1)
 
-        if path == 'yelpnc':
+        if path == 'yelpnc' or path == 'yelpon':
             self.train.drop('date', inplace=True, axis=1)
             self.test.drop('date', inplace=True, axis=1)
             self.ratings.drop('date', inplace=True, axis=1)
@@ -33,6 +33,7 @@ class CFMConverter():
             self.train.drop('timeofday', inplace=True, axis=1)
             self.test.drop('timeofday', inplace=True, axis=1)
             self.ratings.drop('timeofday', inplace=True, axis=1)
+            self.relevant_columns = ['user_id', 'yelping_since', 'fans', 'average_stars', 'day_of_week', 'hour', 'city']
         
         if path =='ml1m':
             self.train.drop('zipcode', inplace=True, axis=1)
@@ -41,12 +42,13 @@ class CFMConverter():
             self.train.drop('timestamp', inplace=True, axis=1)
             self.test.drop('timestamp', inplace=True, axis=1)
             self.ratings.drop('timestamp', inplace=True, axis=1)
+            self.relevant_columns = ['userId', 'age', 'gender', 'occupation', 'weekday', 'timeofday']
         
 
 
         self.n_items = self.all_items.nunique()
 
-        convert_frappe(self)
+        convert_yelp(self, path)
     
  
 def get_column_offsets(self, path):
@@ -68,23 +70,37 @@ def get_column_offsets(self, path):
         age_offset = self.ratings['age'].nunique()
         gender_offset = self.ratings['gender'].nunique()
         occupation_offset = self.ratings['occupation'].nunique()
-        #TODO: GENRE OFFSET
-        all_offsets = [user_offset,daytime_offset,weekday_offset,age_offset,gender_offset,occupation_offset,]
+       
+        #offset_pre_multihot = user_offset + daytime_offset + weekday_offset + age_offset + gender_offset + occupation_offset
+        all_offsets = [user_offset, age_offset, gender_offset,occupation_offset,weekday_offset, daytime_offset]
     else:
         user_offset = self.ratings['user_id'].nunique()
-        day_offset = self.ratings['day_of_week'].nunique()
-        hour_offset = self.ratings['hour'].nunique()
         yelping_since_offset = self.ratings['yelping_since'].nunique()
         fans_offset = self.ratings['fans'].nunique()
         average_stars_offset = self.ratings['average_stars'].nunique()
+        day_offset = self.ratings['day_of_week'].nunique()
+        hour_offset = self.ratings['hour'].nunique()
         city_offset = self.ratings['city'].nunique()
-        #TODO: BUSINESS GENRE OFFSET
-        all_offsets = [user_offset,day_offset,hour_offset,yelping_since_offset,fans_offset,average_stars_offset,city_offset]
+        all_offsets = [user_offset, yelping_since_offset, fans_offset, average_stars_offset, day_offset, hour_offset, city_offset]
     
     return all_offsets
 
+def multihot_conversion(self, mulithot_list, offsets, row, i, train_flag):
+    multihot_value_list = []
+    offset = sum(offsets)
+    for i, value in enumerate(row):
+        rowname = self.train.columns.values[i]
+        if rowname in mulithot_list:
+            if train_flag == 1:
+                if value == 1:
+                    offset += 1
+                    multihot_value_list.append(offset)
+    
+    return multihot_value_list
 
-def create_city_dict_frappe(self):
+
+
+def create_city_dict(self):
     cities = self.ratings['city'].unique()
     city_onehot_dict = {}
     i = 0
@@ -95,9 +111,41 @@ def create_city_dict_frappe(self):
     
     return city_onehot_dict
 
+def create_yelping_since_dict(self):
+    years = self.ratings['yelping_since'].unique()
+    year_onehot_dict = {}
+    i = 0
 
-def convert_frappe(self):
-    city_onehot = create_city_dict_frappe(self)
+    for year in years:
+        year_onehot_dict[year] = i
+        i += 1
+    
+    return year_onehot_dict
+
+def create_fans_dict(self):
+    fans = self.ratings['fans'].unique()
+    fans_onehot_dict = {}
+    i = 0
+
+    for fan in fans:
+        fans_onehot_dict[fan] = i
+        i += 1
+    
+    return fans_onehot_dict
+
+def create_stars_dict(self):
+    stars = self.ratings['average_stars'].unique()
+    stars_onehot_dict = {}
+    i = 0
+
+    for star in stars:
+        stars_onehot_dict[star] = i
+        i += 1
+    
+    return stars_onehot_dict
+
+def convert_frappe(self, path):
+    city_onehot = create_city_dict(self)
     all_offsets = get_column_offsets(self, path)  
     cfm_train, cfm_test = [], []
 
@@ -143,23 +191,85 @@ def convert_frappe(self):
     cfm_train_df.to_csv('train.csv', index=False)
     cfm_test_df.to_csv('test.csv', index=False)
 
-def convert_ml1m(self):
+def convert_ml1m(self, path):
     all_offsets = get_column_offsets(self, path)  
+    #multihot_list = ['Action','Adventure','Animation','Children\'s','Comedy','Crime','Documentary','Drama','Fantasy','Film-Noir','Horror','Musical','Mystery','Romance','Sci-Fi','Thriller','War','Western']
+    
     cfm_train, cfm_test = [], []
 
     for i, row in self.train.iterrows():
         current_offset = 0
         one_hot_indices_user =  []
-
-        for index, value in enumerate(row):
-            # index 6 is city, need to look up the offset in the dict
-            if index == 6:
-                one_hot_indices_user.append(city_onehot[value] + current_offset)
-                current_offset = current_offset + all_offsets[index] 
-            else:
-                one_hot_indices_user.append(value + current_offset) 
+        index = 0
+        
+        for j, value in enumerate(row):
+            rowname = self.train.columns.values[j]
+            if rowname in self.relevant_columns:
+                one_hot_indices_user.append(row[j] + current_offset) 
                 current_offset = current_offset + all_offsets[index]
+                index += 1
 
+        #multihot_representation = multihot_conversion(self, multihot_list, all_offsets, row, 1)
+        #one_hot_indices_user.append(multihot_representation)
+        cfm_string = (",".join(str(x) for x in one_hot_indices_user)).replace(',', '-')
+        cfm_string = cfm_string + ',' + str(self.train_items[i]) + '-' + str(self.n_items) 
+        cfm_train.append(cfm_string)
+
+    for i, row in self.test.iterrows():
+        current_offset = 0
+        one_hot_indices_user =  []
+        index = 0
+
+        for j, value in enumerate(row):
+            rowname = self.train.columns.values[j]
+            if rowname in self.relevant_columns:
+                one_hot_indices_user.append(row[j] + current_offset) 
+                current_offset = current_offset + all_offsets[index]
+                index += 1
+
+        cfm_string = (",".join(str(x) for x in one_hot_indices_user)).replace(',', '-')
+        cfm_string = cfm_string + ',' + str(self.test_items[i]) + '-' + str(self.n_items) 
+        cfm_test.append(cfm_string)
+
+    cfm_train_df = pd.DataFrame(cfm_train)
+    cfm_test_df = pd.DataFrame(cfm_test)
+
+    cfm_train_df.to_csv('train.csv', index=False)
+    cfm_test_df.to_csv('test.csv', index=False)
+
+def convert_yelp(self, path):
+    city_onehot = create_city_dict(self)
+    yelping_onehot = create_yelping_since_dict(self)
+    fans_onehot = create_fans_dict(self)
+    stars_onehot = create_stars_dict(self)
+    all_offsets = get_column_offsets(self, path)  
+    
+    cfm_train, cfm_test = [], []
+
+    for i, row in self.train.iterrows():
+        current_offset = 0
+        one_hot_indices_user =  []
+        index = 0
+        
+        for j, value in enumerate(row):
+            rowname = self.train.columns.values[j]
+            if rowname in self.relevant_columns:
+                if rowname == 'city':
+                    one_hot_indices_user.append(city_onehot[value] + current_offset) 
+                    current_offset = current_offset + all_offsets[index]
+                elif rowname == 'yelping_since':
+                    one_hot_indices_user.append(yelping_onehot[value] + current_offset) 
+                    current_offset = current_offset + all_offsets[index]
+                elif rowname == 'fans':
+                    one_hot_indices_user.append(fans_onehot[value] + current_offset) 
+                    current_offset = current_offset + all_offsets[index]
+                elif rowname == 'average_stars':
+                    one_hot_indices_user.append(stars_onehot[value] + current_offset) 
+                    current_offset = current_offset + all_offsets[index]
+                else:
+                    one_hot_indices_user.append(row[j] + current_offset) 
+                    current_offset = current_offset + all_offsets[index]
+                index += 1
 
         cfm_string = (",".join(str(x) for x in one_hot_indices_user)).replace(',', '-')
         cfm_string = cfm_string + ',' + str(self.train_items[i]) + '-' + str(self.n_items) 
@@ -168,16 +278,18 @@ def convert_ml1m(self):
     for i, row in self.test.iterrows():
         current_offset = 0
         one_hot_indices_user =  []
+        index = 0
 
-        for index, value in enumerate(row):
-            # index 6 is city, need to look up the offset in the dict
-            if index == 6:
-                one_hot_indices_user.append(city_onehot[value] + current_offset)
-                current_offset = current_offset + all_offsets[index] 
-            else:
-                one_hot_indices_user.append(value + current_offset) 
-                current_offset = current_offset + all_offsets[index]
-
+        for j, value in enumerate(row):
+            rowname = self.train.columns.values[j]
+            if rowname in self.relevant_columns:
+                if index == 6:
+                    one_hot_indices_user.append(city_onehot[value] + current_offset) 
+                    current_offset = current_offset + all_offsets[index]
+                else:
+                    one_hot_indices_user.append(row[j] + current_offset) 
+                    current_offset = current_offset + all_offsets[index]
+                index += 1
 
         cfm_string = (",".join(str(x) for x in one_hot_indices_user)).replace(',', '-')
         cfm_string = cfm_string + ',' + str(self.test_items[i]) + '-' + str(self.n_items) 
@@ -191,6 +303,6 @@ def convert_ml1m(self):
 
 #CFMConverter('Frappe', 'item')
 
-#CFMConverter('yelpnc', 'business_id')
+CFMConverter('yelpnc', 'business_id')
 #CFMConverter('yelpon', 'business_id')
 #CFMConverter('ml1m', 'movieId')
