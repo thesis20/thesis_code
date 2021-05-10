@@ -16,9 +16,9 @@ class Data(object):
     def __init__(self, path, alg_type, batch_size, eval_type):
         self.path = path
         self.batch_size = batch_size
-        self.loo_eval = False
         self.alg_type = alg_type
         self.eval_type = eval_type
+        self.test_set = {}
         rd.seed(2021)
 
         if 'ml100k' in self.path:
@@ -65,10 +65,10 @@ class Data(object):
             self.item_sideinfo_onehot = []
             self.user_sideinfo_onehot = ['age','gender','occupation']
 
-        if self.loo_eval:
-            self.init_loo_split()
-        else:
-            self.init_train_test_split()
+        #if self.eval_type == 'loo':
+         #   self.init_loo_split()
+        #else:
+        self.init_train_test_split()
 
         self.n_user_sideinfo, self.n_item_sideinfo = self.sideinfo_counter()
 
@@ -118,7 +118,7 @@ class Data(object):
         return combinations
 
     def init_loo_split(self):
-        full_file = self.path + '/out.txt'
+        full_file = self.path + '/loo_out.txt'
 
         self.n_users, self.n_items, self.n_contexts = 0, 0, 0
         self.n_train, self.n_test = 0, 0
@@ -134,6 +134,7 @@ class Data(object):
         self.n_users = self.full_df[self.user_column_name].max()
         self.unique_users = self.full_df[self.user_column_name].unique()
         loo_interactions = []
+        print("init loo")
         #count = 0
         for userid in self.unique_users:
             #if count == 20:
@@ -153,8 +154,8 @@ class Data(object):
 
 
     def init_train_test_split(self):
-        train_file = self.path + '/train.txt'
-        test_file = self.path + '/test.txt'
+        train_file = self.path + '/loo_train.txt'
+        test_file = self.path + '/loo_test.txt'
 
         self.n_users, self.n_items, self.n_contexts = 0, 0, 0
         self.n_train, self.n_test = 0, 0
@@ -225,7 +226,7 @@ class Data(object):
 
         self.R = sp.dok_matrix((self.n_users, self.n_items), dtype=np.float32)
 
-        self.train_items, self.test_set = {}, {}
+        self.train_items = {}
         # Key: userID || value: list of positive interactions
         # self.R: [uid, i] = 1 for hver interaction
 

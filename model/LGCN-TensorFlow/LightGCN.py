@@ -15,6 +15,7 @@ import tensorflow as tf
 from tensorflow.python.client import device_lib
 from utility.helper import *
 from utility.batch_test import *
+from evaluate_loo_test import evaluator
 os.environ['TF_CPP_MIN_LOG_LEVEL']='2'
 
 cpus = [x.name for x in device_lib.list_local_devices() if x.device_type == 'CPU']
@@ -47,6 +48,8 @@ class LightGCN(object):
         self.log_dir=self.create_model_str()
         self.verbose = args.verbose
         self.Ks = eval(args.Ks)
+        self.evaluator = evaluator()
+        #self.test_set_dict = data_generator.test_set
 
 
         '''
@@ -105,6 +108,20 @@ class LightGCN(object):
                 tf.summary.scalar('train_hitrate_last', self.train_hitrate_last)
                 self.train_mrr_last = tf.placeholder(tf.float32)
                 tf.summary.scalar('train_mrr_last', self.train_mrr_last)
+                self.train_rec_first = tf.placeholder(tf.float32)
+                #record for top(Ks[0])
+                tf.summary.scalar('train_rec_first', self.train_rec_first)
+                self.train_rec_last = tf.placeholder(tf.float32)
+                #record for top(Ks[-1])
+                tf.summary.scalar('train_rec_last', self.train_rec_last)
+                self.train_ndcg_first = tf.placeholder(tf.float32)
+                tf.summary.scalar('train_ndcg_first', self.train_ndcg_first)
+                self.train_ndcg_last = tf.placeholder(tf.float32)
+                tf.summary.scalar('train_ndcg_last', self.train_ndcg_last)
+                self.train_precision_first = tf.placeholder(tf.float32)
+                tf.summary.scalar('train_precision_first', self.train_precision_first)
+                self.train_precision_last = tf.placeholder(tf.float32)
+                tf.summary.scalar('train_precision_last', self.train_precision_last)
         self.merged_train_acc = tf.summary.merge(tf.get_collection(tf.GraphKeys.SUMMARIES, 'TRAIN_ACC'))
 
         with tf.name_scope('TEST_LOSS'):

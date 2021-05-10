@@ -11,12 +11,12 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Run NGCF.")
     parser.add_argument('--weights_path', nargs='?', default='',
                         help='Store model path.')
-    parser.add_argument('--data_path', nargs='?', default='../../Data/',
+    parser.add_argument('--data_path', nargs='?', default='',
                         help='Input data path.')
     parser.add_argument('--proj_path', nargs='?', default='',
                         help='Project path.')
 
-    parser.add_argument('--dataset', nargs='?', default='yelpon',
+    parser.add_argument('--dataset', nargs='?', default='frappe',
                         help='Choose a dataset from {ml100k, frappe, yelpnc, yelpon, ml1m}')
     parser.add_argument('--pretrain', type=int, default=0,
                         help='0: No pretrain, -1: Pretrain with the learned embeddings, 1:Pretrain with stored models.')
@@ -26,14 +26,14 @@ def parse_args():
                     help='Interval of evaluation.')
     parser.add_argument('--epoch', type=int, default=1000,
                         help='Number of epoch.')
-    parser.add_argument('--eval_type', type=str, default='foldout',
+    parser.add_argument('--eval_type', type=str, default='loo',
                         help='type of evaluation from {foldout, loo}')
 
     parser.add_argument('--embed_size', type=int, default=64,
                         help='Embedding size.')
     parser.add_argument('--layer_size', nargs='?', default='[64, 64, 64, 64]',
                         help='Output sizes of every layer')
-    parser.add_argument('--batch_size', type=int, default=518,
+    parser.add_argument('--batch_size', type=int, default=54,
                         help='Batch size.')
 
     parser.add_argument('--regs', nargs='?', default='[1e-5,1e-5,1e-2]',
@@ -45,7 +45,7 @@ def parse_args():
                         help='Specify the name of model (lightgcn).')
     parser.add_argument('--adj_type', nargs='?', default='pre',
                         help='Specify the type of the adjacency (laplacian) matrix from {plain, norm, mean}.')
-    parser.add_argument('--alg_type', nargs='?', default='lightgcn',
+    parser.add_argument('--alg_type', nargs='?', default='csgcn',
                         help='Specify the type of the graph convolutional layer from {ngcf, gcn, gcmc}.')
 
     parser.add_argument('--gpu_id', type=int, default=0,
