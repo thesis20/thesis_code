@@ -13,6 +13,7 @@ class CFMConverter():
         self.train.drop(item_column_name, inplace=True, axis=1)
         self.test.drop(item_column_name, inplace=True, axis=1)
         self.ratings.drop(item_column_name, inplace=True, axis=1)
+        self.n_items = self.all_items.nunique()
 
         if path == 'yelpnc' or path == 'yelpon':
             self.train.drop('date', inplace=True, axis=1)
@@ -34,8 +35,8 @@ class CFMConverter():
             self.test.drop('timeofday', inplace=True, axis=1)
             self.ratings.drop('timeofday', inplace=True, axis=1)
             self.relevant_columns = ['user_id', 'yelping_since', 'fans', 'average_stars', 'day_of_week', 'hour', 'city']
-        
-        if path =='ml1m':
+            convert_yelp(self, path)
+        elif path =='ml1m':
             self.train.drop('zipcode', inplace=True, axis=1)
             self.test.drop('zipcode', inplace=True, axis=1)
             self.ratings.drop('zipcode', inplace=True, axis=1)
@@ -43,13 +44,9 @@ class CFMConverter():
             self.test.drop('timestamp', inplace=True, axis=1)
             self.ratings.drop('timestamp', inplace=True, axis=1)
             self.relevant_columns = ['userId', 'age', 'gender', 'occupation', 'weekday', 'timeofday']
-        
-
-
-        self.n_items = self.all_items.nunique()
-
-        convert_yelp(self, path)
-    
+            convert_ml1m(self, path)
+        else:
+            convert_frappe(self, path)
  
 def get_column_offsets(self, path):
     if path == 'Frappe':
@@ -98,8 +95,6 @@ def multihot_conversion(self, mulithot_list, offsets, row, i, train_flag):
     
     return multihot_value_list
 
-
-
 def create_city_dict(self):
     cities = self.ratings['city'].unique()
     city_onehot_dict = {}
@@ -132,6 +127,17 @@ def create_fans_dict(self):
         i += 1
     
     return fans_onehot_dict
+
+def create_gender_dict(self):
+    genders = self.ratings['gender'].unique()
+    gender_onehot_dict = {}
+    i = 0
+
+    for gender in genders:
+        gender_onehot_dict[gender] = i
+        i += 1
+    
+    return gender_onehot_dict
 
 def create_stars_dict(self):
     stars = self.ratings['average_stars'].unique()
@@ -193,8 +199,7 @@ def convert_frappe(self, path):
 
 def convert_ml1m(self, path):
     all_offsets = get_column_offsets(self, path)  
-    #multihot_list = ['Action','Adventure','Animation','Children\'s','Comedy','Crime','Documentary','Drama','Fantasy','Film-Noir','Horror','Musical','Mystery','Romance','Sci-Fi','Thriller','War','Western']
-    
+    gender_onehot = create_gender_dict(self)   
     cfm_train, cfm_test = [], []
 
     for i, row in self.train.iterrows():
@@ -205,12 +210,14 @@ def convert_ml1m(self, path):
         for j, value in enumerate(row):
             rowname = self.train.columns.values[j]
             if rowname in self.relevant_columns:
-                one_hot_indices_user.append(row[j] + current_offset) 
-                current_offset = current_offset + all_offsets[index]
+                if rowname == 'gender':
+                    one_hot_indices_user.append(gender_onehot[value] + current_offset) 
+                    current_offset = current_offset + all_offsets[index]
+                else:
+                    one_hot_indices_user.append(row[j] + current_offset) 
+                    current_offset = current_offset + all_offsets[index]
                 index += 1
 
-        #multihot_representation = multihot_conversion(self, multihot_list, all_offsets, row, 1)
-        #one_hot_indices_user.append(multihot_representation)
         cfm_string = (",".join(str(x) for x in one_hot_indices_user)).replace(',', '-')
         cfm_string = cfm_string + ',' + str(self.train_items[i]) + '-' + str(self.n_items) 
         cfm_train.append(cfm_string)
@@ -223,8 +230,12 @@ def convert_ml1m(self, path):
         for j, value in enumerate(row):
             rowname = self.train.columns.values[j]
             if rowname in self.relevant_columns:
-                one_hot_indices_user.append(row[j] + current_offset) 
-                current_offset = current_offset + all_offsets[index]
+                if rowname == 'gender':
+                    one_hot_indices_user.append(gender_onehot[value] + current_offset) 
+                    current_offset = current_offset + all_offsets[index]
+                else:
+                    one_hot_indices_user.append(row[j] + current_offset) 
+                    current_offset = current_offset + all_offsets[index]
                 index += 1
 
         cfm_string = (",".join(str(x) for x in one_hot_indices_user)).replace(',', '-')
@@ -301,8 +312,8 @@ def convert_yelp(self, path):
     cfm_train_df.to_csv('train.csv', index=False)
     cfm_test_df.to_csv('test.csv', index=False)
 
-#CFMConverter('Frappe', 'item')
 
+#CFMConverter('Frappe', 'item')
 CFMConverter('yelpnc', 'business_id')
 #CFMConverter('yelpon', 'business_id')
 #CFMConverter('ml1m', 'movieId')
