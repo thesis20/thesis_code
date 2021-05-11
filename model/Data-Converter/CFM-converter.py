@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 
 
 
@@ -14,6 +15,7 @@ class CFMConverter():
         self.test.drop(item_column_name, inplace=True, axis=1)
         self.ratings.drop(item_column_name, inplace=True, axis=1)
         self.n_items = self.all_items.nunique()
+        self.path = path
 
         if path == 'yelpnc' or path == 'yelpon':
             self.train.drop('date', inplace=True, axis=1)
@@ -118,7 +120,12 @@ def create_yelping_since_dict(self):
     return year_onehot_dict
 
 def create_fans_dict(self):
-    fans = self.ratings['fans'].unique()
+    fans_nan = self.ratings['fans'].unique()
+    #remove nan entry from entries in the dataset that have no value set
+    if self.path =='yelpnc':
+        fans = np.delete(fans_nan, -1)
+    else:
+        fans = fans_nan
     fans_onehot_dict = {}
     i = 0
 
@@ -271,8 +278,11 @@ def convert_yelp(self, path):
                 elif rowname == 'yelping_since':
                     one_hot_indices_user.append(yelping_onehot[value] + current_offset) 
                     current_offset = current_offset + all_offsets[index]
-                elif rowname == 'fans':
+                elif rowname == 'fans' and not np.isnan(value):
                     one_hot_indices_user.append(fans_onehot[value] + current_offset) 
+                    current_offset = current_offset + all_offsets[index]
+                elif rowname == 'fans' and np.isnan(value):
+                    one_hot_indices_user.append(0 + current_offset) 
                     current_offset = current_offset + all_offsets[index]
                 elif rowname == 'average_stars':
                     one_hot_indices_user.append(stars_onehot[value] + current_offset) 
@@ -294,8 +304,20 @@ def convert_yelp(self, path):
         for j, value in enumerate(row):
             rowname = self.train.columns.values[j]
             if rowname in self.relevant_columns:
-                if index == 6:
+                if rowname == 'city':
                     one_hot_indices_user.append(city_onehot[value] + current_offset) 
+                    current_offset = current_offset + all_offsets[index]
+                elif rowname == 'yelping_since':
+                    one_hot_indices_user.append(yelping_onehot[value] + current_offset) 
+                    current_offset = current_offset + all_offsets[index]
+                elif rowname == 'fans' and not np.isnan(value):
+                    one_hot_indices_user.append(fans_onehot[value] + current_offset) 
+                    current_offset = current_offset + all_offsets[index]
+                elif rowname == 'fans' and np.isnan(value):
+                    one_hot_indices_user.append(0 + current_offset) 
+                    current_offset = current_offset + all_offsets[index]
+                elif rowname == 'average_stars':
+                    one_hot_indices_user.append(stars_onehot[value] + current_offset) 
                     current_offset = current_offset + all_offsets[index]
                 else:
                     one_hot_indices_user.append(row[j] + current_offset) 
@@ -313,7 +335,7 @@ def convert_yelp(self, path):
     cfm_test_df.to_csv('test.csv', index=False)
 
 
-#CFMConverter('Frappe', 'item')
-CFMConverter('yelpnc', 'business_id')
+CFMConverter('Frappe', 'item')
+#CFMConverter('yelpnc', 'business_id')
 #CFMConverter('yelpon', 'business_id')
 #CFMConverter('ml1m', 'movieId')
