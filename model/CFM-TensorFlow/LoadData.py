@@ -34,7 +34,7 @@ class LoadData(object):
         print("item_bind_M", len(self.binded_items.values()))
         print("user_bind_M", len(self.binded_users.values()))
         print("user_bind_train_M", len(self.binded_users_train.values()))
-        self.user_positive_list = self.get_positive_list(self.trainfile, self.testfile)  # userID positive itemID
+        self.user_positive_list = self.get_positive_list(self.trainfile)  # userID positive itemID
         self.Train_data, self.Test_data = self.construct_data()
 
     def get_length(self):
@@ -146,7 +146,7 @@ class LoadData(object):
             line = f.readline()
         f.close()
 
-    def get_positive_list(self, train, test):
+    def get_positive_list(self, train):
         '''
         Obtain positive item lists for each user
         :param file: train file
@@ -165,21 +165,6 @@ class LoadData(object):
                 user_positive_list[user_id] = [item_id]
             line = f.readline()
         f.close()
-
-        
-        #f = open(test)
-        #line = f.readline()
-        #while line:
-            #features = line.strip().split(',')
-            #user_id = self.binded_users[features[0]]
-            #item_id = self.binded_items[features[1]]
-            #if user_id in user_positive_list:
-                #user_positive_list[user_id].append(item_id)
-            #else:
-                #user_positive_list[user_id] = [item_id]
-            #line = f.readline()
-        #f.close()
-
 
         return user_positive_list
 

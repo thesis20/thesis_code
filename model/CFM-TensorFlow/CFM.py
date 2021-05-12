@@ -24,13 +24,13 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Run CFM.")
     parser.add_argument('--path', nargs='?', default='Data/',
                         help='Input data path.')
-    parser.add_argument('--dataset', nargs='?', default='frappe2',
+    parser.add_argument('--dataset', nargs='?', default='frappe',
                         help='Choose a dataset. frappe, lastfm, movielens')
     parser.add_argument('--epoch', type=int, default=300,
                         help='Number of epochs.')
     parser.add_argument('--pretrain', type=int, default=1,
                         help='flag for pretrain. 1: initialize from pretrain; 0: randomly initialize; -1: save the model to pretrain file')
-    parser.add_argument('--batch_size', type=int, default=382,
+    parser.add_argument('--batch_size', type=int, default=256,
                         help='Batch size.')
     parser.add_argument('--hidden_factor', type=int, default=64,
                         help='Number of hidden factors, i.e., embedding size.')
@@ -56,7 +56,7 @@ def parse_args():
                         help='dimension of attention_size')
     parser.add_argument('--attentive_pooling', type=bool, default=False,
                         help='the flag of attentive_pooling')
-    parser.add_argument('--num_field', type=int, default=10,
+    parser.add_argument('--num_field', type=int, default=5,
                         help='number of fields')
 
     return parser.parse_args()
