@@ -24,15 +24,15 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Run FM.")
     parser.add_argument('--path', nargs='?', default='Data/',
                         help='Input data path.')
-    parser.add_argument('--topk', nargs='?', default=10,
+    parser.add_argument('--topk', nargs='?', default=20,
                         help='Topk recommendation list')
-    parser.add_argument('--dataset', nargs='?', default='frappe2',
+    parser.add_argument('--dataset', nargs='?', default='yelpnc',
                         help='Choose a dataset.')
     parser.add_argument('--epoch', type=int, default=1000,
                         help='Number of epochs.')
     parser.add_argument('--pretrain', type=int, default=-1,
                         help='flag for pretrain. 1: initialize from pretrain; 0: randomly initialize; -1: save the model to pretrain file')
-    parser.add_argument('--batch_size', type=int, default=54,
+    parser.add_argument('--batch_size', type=int, default=227,
                         help='Batch size.')
     parser.add_argument('--hidden_factor', type=int, default=64,
                         help='Number of hidden factors.')
@@ -286,9 +286,9 @@ class FM(BaseEstimator, TransformerMixin):
 
     def evaluate(self):
         self.graph.finalize()
-        count = [0, 0, 0]
-        rank = [[], [], []]
-        topK = [20,50,100]
+        count = [0, 0]
+        rank = [[], []]
+        topK = [20,50]
         for index in range(len(data.Test_data['X_user'])):
             user_features = data.Test_data['X_user'][index]
             item_features = data.Test_data['X_item'][index]
@@ -296,6 +296,7 @@ class FM(BaseEstimator, TransformerMixin):
             # get true item score
             true_item_id = data.binded_items["-".join([str(item) for item in item_features[0:]])]
             true_item_score = scores[true_item_id]
+            
             # delete visited scores
             user_id = data.binded_users["-".join([str(item) for item in user_features[0:]])]  # get userID
             # logger.info(user_id)
