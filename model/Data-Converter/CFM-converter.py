@@ -5,9 +5,9 @@ import numpy as np
 
 class CFMConverter():
     def __init__(self, path, item_column_name):
-        self.train = pd.read_csv('model/Data-Converter/' + path +  '/train.txt', sep=',', )
-        self.test = pd.read_csv('model/Data-Converter/' + path + '/test.txt', sep=',', )
-        self.ratings = pd.read_csv('model/Data-Converter/' + path + '/out.txt', sep=',', )
+        self.train = pd.read_csv( path +  '/train.txt', sep=',', )
+        self.test = pd.read_csv(path + '/test.txt', sep=',', )
+        self.ratings = pd.read_csv(path + '/out.txt', sep=',', )
         self.train_items = self.train[item_column_name]
         self.test_items = self.test[item_column_name]
         self.all_items = self.ratings[item_column_name]
@@ -37,6 +37,7 @@ class CFMConverter():
             self.test.drop('timeofday', inplace=True, axis=1)
             self.ratings.drop('timeofday', inplace=True, axis=1)
             self.relevant_columns = ['user_id', 'yelping_since', 'fans', 'average_stars', 'day_of_week', 'hour', 'city']
+            self.train.drop_duplicates(inplace=True)
             convert_yelp(self, path)
         elif path =='ml1m':
             self.train.drop('zipcode', inplace=True, axis=1)
@@ -125,7 +126,7 @@ def create_fans_dict(self):
     if self.path =='yelpnc':
         fans = np.delete(fans_nan, -1)
     else:
-        fans = fans_nan
+        fans = fans_nan[~np.isnan(fans_nan)]
     fans_onehot_dict = {}
     i = 0
 
@@ -156,6 +157,28 @@ def create_stars_dict(self):
         i += 1
     
     return stars_onehot_dict
+
+def create_hour_dict(self):
+    hours = self.ratings['hour'].unique()
+    hour_onehot_dict = {}
+    i = 0
+
+    for hour in hours:
+        hour_onehot_dict[hour] = i
+        i += 1
+    
+    return hour_onehot_dict
+
+def create_weekday_dict(self):
+    weekdays = self.ratings['day_of_week'].unique()
+    weekday_onehot_dict = {}
+    i = 0
+
+    for wd in weekdays:
+        weekday_onehot_dict[wd] = i
+        i += 1
+    
+    return weekday_onehot_dict
 
 def convert_frappe(self, path):
     city_onehot = create_city_dict(self)
@@ -260,15 +283,18 @@ def convert_yelp(self, path):
     yelping_onehot = create_yelping_since_dict(self)
     fans_onehot = create_fans_dict(self)
     stars_onehot = create_stars_dict(self)
+    weekday_onehot = create_weekday_dict(self)
+    hour_onehot = create_hour_dict(self)
     all_offsets = get_column_offsets(self, path)  
     
     cfm_train, cfm_test = [], []
 
     for i, row in self.train.iterrows():
+        print("asdf")
         current_offset = 0
         one_hot_indices_user =  []
         index = 0
-        
+
         for j, value in enumerate(row):
             rowname = self.train.columns.values[j]
             if rowname in self.relevant_columns:
@@ -286,6 +312,12 @@ def convert_yelp(self, path):
                     current_offset = current_offset + all_offsets[index]
                 elif rowname == 'average_stars':
                     one_hot_indices_user.append(stars_onehot[value] + current_offset) 
+                    current_offset = current_offset + all_offsets[index]
+                elif rowname == 'day_of_week':
+                    one_hot_indices_user.append(weekday_onehot[value] + current_offset) 
+                    current_offset = current_offset + all_offsets[index]
+                elif rowname == 'hour':
+                    one_hot_indices_user.append(hour_onehot[value] + current_offset) 
                     current_offset = current_offset + all_offsets[index]
                 else:
                     one_hot_indices_user.append(row[j] + current_offset) 
@@ -330,12 +362,20 @@ def convert_yelp(self, path):
 
     cfm_train_df = pd.DataFrame(cfm_train)
     cfm_test_df = pd.DataFrame(cfm_test)
+    cfm_concat = pd.concat([cfm_test_df, cfm_train_df])
+    cfm_concat.drop_duplicates(inplace=True)
+    if path=='yelpnc':
+        cfm_new_train = cfm_concat[2274:]
+        cfm_new_test = cfm_concat[:2274]
+    else:
+        cfm_new_train = cfm_concat[5185:]
+        cfm_new_test = cfm_concat[:5185]
 
-    cfm_train_df.to_csv('train.csv', index=False)
-    cfm_test_df.to_csv('test.csv', index=False)
+    cfm_new_train.to_csv('train.csv', index=False)
+    cfm_new_test.to_csv('test.csv', index=False)
 
 
-CFMConverter('Frappe', 'item')
+#CFMConverter('Frappe', 'item')
 #CFMConverter('yelpnc', 'business_id')
-#CFMConverter('yelpon', 'business_id')
+CFMConverter('yelpon', 'business_id')
 #CFMConverter('ml1m', 'movieId')
