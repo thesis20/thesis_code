@@ -57,7 +57,7 @@ def test(sess, model, users_to_test, drop_flag=False, train_set_flag=0):
                 if model.adj_type in ['csgcn']:
                     item_contexts.append([data_generator.context_offset_dict[value] for value in context_comb])
                     if drop_flag == False:
-                            rate_batch.append(sess.run(model.batch_ratings, {model.users: user_batch,
+                        rate_batch.append(sess.run(model.batch_ratings, {model.users: user_batch,
                                                                         model.pos_items: item_batch,
                                                                         model.contexts: item_contexts}))
                     else:
@@ -162,22 +162,39 @@ def test_loo(sess, model, users_to_test, drop_flag=False, train_set_flag=0):
                 test_interaction = data_generator.test_set[user][0]
                 context = test_interaction[1]
                 item_contexts = []
-                for item in item_batch:
+                if model.adj_type in ['csgcn']:
                     item_context = []
                     for context_index, value in enumerate(context):
                         value = data_generator.context_column_list[context_index] + str(value)
-                        item_context.append(data_generator.item_context_offset_dict[(item, value)])
+                        item_context.append(data_generator.context_offset_dict[value])
                     item_contexts.append(item_context)
-                if drop_flag == False:
-                    user_ratings = sess.run(model.batch_ratings, {model.users: [user],
+                    if drop_flag == False:
+                        user_ratings = sess.run(model.batch_ratings, {model.users: [user],
+                                                                        model.pos_items: item_batch,
+                                                                        model.contexts: item_contexts})
+                    else:
+                        user_ratings = sess.run(model.batch_ratings, {model.users: [user],
                                                                     model.pos_items: item_batch,
-                                                                    model.pos_items_context: item_contexts})
-                else:
-                    user_ratings = sess.run(model.batch_ratings, {model.users: [user],
-                                                                    model.pos_items: item_batch,
-                                                                    model.pos_items_context: item_contexts,
+                                                                    model.contexts: item_contexts,
                                                                     model.node_dropout: [0.] * len(eval(args.layer_size)),
                                                                     model.mess_dropout: [0.] * len(eval(args.layer_size))})
+                else:           
+                    for item in item_batch:
+                        item_context = []
+                        for context_index, value in enumerate(context):
+                            value = data_generator.context_column_list[context_index] + str(value)
+                            item_context.append(data_generator.item_context_offset_dict[(item, value)])
+                        item_contexts.append(item_context)
+                    if drop_flag == False:
+                        user_ratings = sess.run(model.batch_ratings, {model.users: [user],
+                                                                        model.pos_items: item_batch,
+                                                                        model.pos_items_context: item_contexts})
+                    else:
+                        user_ratings = sess.run(model.batch_ratings, {model.users: [user],
+                                                                        model.pos_items: item_batch,
+                                                                        model.pos_items_context: item_contexts,
+                                                                        model.node_dropout: [0.] * len(eval(args.layer_size)),
+                                                                        model.mess_dropout: [0.] * len(eval(args.layer_size))})
                 rate_batch.append(np.squeeze(user_ratings))
         else:
             if drop_flag == False:
