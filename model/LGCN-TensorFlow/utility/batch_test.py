@@ -11,6 +11,7 @@ from evaluator import eval_score_matrix_foldout, eval_score_matrix_loo
 import multiprocessing
 import heapq
 import numpy as np
+from tqdm import tqdm
 cores = multiprocessing.cpu_count() // 2
 
 args = parse_args()
@@ -39,7 +40,7 @@ def test(sess, model, users_to_test, drop_flag=False, train_set_flag=0):
     count = 0
     all_result = []
     item_batch = range(ITEM_NUM)
-    for u_batch_id in range(n_user_batchs):
+    for u_batch_id in tqdm(range(n_user_batchs)):
         start = u_batch_id * u_batch_size
         end = (u_batch_id + 1) * u_batch_size
         
@@ -49,25 +50,38 @@ def test(sess, model, users_to_test, drop_flag=False, train_set_flag=0):
         if len(user_batch) == 0:
             continue
 
-        if model.alg_type in ['csgcn']:
+        if model.alg_type in ['csgcn-is', 'csgcn-adj']:
             rate_batch = []
             for context_comb in data_generator.test_context_combinations:
                 item_contexts = []
-                for item in item_batch:
-                    item_context = []
-                    for value in context_comb:
-                        item_context.append(data_generator.item_context_offset_dict[(item, value)])
-                    item_contexts.append(item_context)
-                if drop_flag == False:
-                    rate_batch.append(sess.run(model.batch_ratings, {model.users: user_batch,
-                                                                model.pos_items: item_batch,
-                                                                model.pos_items_context: item_contexts}))
-                else:
-                    rate_batch.append(sess.run(model.batch_ratings, {model.users: user_batch,
-                                                                model.pos_items: item_batch,
-                                                                model.pos_items_context: item_contexts,
-                                                                model.node_dropout: [0.] * len(eval(args.layer_size)),
-                                                                model.mess_dropout: [0.] * len(eval(args.layer_size))}))
+                if model.alg_type in ['csgcn-adj']:
+                    item_contexts.append([data_generator.context_offset_dict[value] for value in context_comb])
+                    if drop_flag == False:
+                        rate_batch.append(sess.run(model.batch_ratings, {model.users: user_batch,
+                                                                        model.pos_items: item_batch,
+                                                                        model.contexts: item_contexts}))
+                    else:
+                        rate_batch.append(sess.run(model.batch_ratings, {model.users: user_batch,
+                                                                    model.pos_items: item_batch,
+                                                                    model.contexts: item_contexts,
+                                                                    model.node_dropout: [0.] * len(eval(args.layer_size)),
+                                                                    model.mess_dropout: [0.] * len(eval(args.layer_size))}))
+                elif model.alg_type in ['csgcn-is']:
+                    for item in item_batch:
+                        item_context = []
+                        for value in context_comb:
+                                item_context.append(data_generator.item_context_offset_dict[(item, value)])
+                        item_contexts.append(item_context)
+                    if drop_flag == False:
+                            rate_batch.append(sess.run(model.batch_ratings, {model.users: user_batch,
+                                                                        model.pos_items: item_batch,
+                                                                        model.pos_items_context: item_contexts}))
+                    else:
+                        rate_batch.append(sess.run(model.batch_ratings, {model.users: user_batch,
+                                                                    model.pos_items: item_batch,
+                                                                    model.pos_items_context: item_contexts,
+                                                                    model.node_dropout: [0.] * len(eval(args.layer_size)),
+                                                                    model.mess_dropout: [0.] * len(eval(args.layer_size))}))
             rate_batch = np.reshape(rate_batch, (len(data_generator.test_context_combinations), len(user_batch), data_generator.n_items))
             rate_batch = np.max(rate_batch, axis=0)
         else:
@@ -83,25 +97,16 @@ def test(sess, model, users_to_test, drop_flag=False, train_set_flag=0):
         test_items = []
         if train_set_flag == 0:
             for user in user_batch:
-                if model.alg_type in ['csgcn']:
-                    test_items.append([itemId for itemId, _ in data_generator.test_set[user]])
-                else:
-                    test_items.append(data_generator.test_set[user])# (B, #test_items)
+                test_items.append(data_generator.test_items[user])# (B, #test_items)
 
             # set the ranking scores of training items to -inf,
             # then the training items will be sorted at the end of the ranking list.
             for idx, user in enumerate(user_batch):
-                if model.alg_type in ['csgcn']:
-                    train_items_off = [itemId for itemId, _ in data_generator.train_items[user]]
-                else:
-                    train_items_off = data_generator.train_items[user]
+                train_items_off = data_generator.train_items[user]
                 rate_batch[idx][train_items_off] = -np.inf
         else:
             for user in user_batch:
-                if model.alg_type in ['csgcn']:
-                    test_items.append([itemId for itemId, _ in data_generator.train_items[user]])
-                else:
-                    test_items.append(data_generator.train_items[user])
+                test_items.append(data_generator.train_items[user])
         
         batch_result = eval_score_matrix_foldout(rate_batch, test_items, max_top)#(B,k*metric_num), max_top= 20
         count += len(batch_result)
@@ -142,28 +147,45 @@ def test_loo(sess, model, users_to_test, drop_flag=False, train_set_flag=0):
 
         user_batch = test_users[start: end]
         
-        if model.alg_type in ['csgcn']:
+        if model.alg_type in ['csgcn-is', 'csgcn-adj']:
             rate_batch = []
             for user in user_batch:
-                test_interaction = data_generator.test_set[user][0]
+                test_interaction = data_generator.test_interactions[user][0]
                 context = test_interaction[1]
                 item_contexts = []
-                for item in item_batch:
+                if model.alg_type in ['csgcn-adj']:
                     item_context = []
                     for context_index, value in enumerate(context):
                         value = data_generator.context_column_list[context_index] + str(value)
-                        item_context.append(data_generator.item_context_offset_dict[(item, value)])
+                        item_context.append(data_generator.context_offset_dict[value])
                     item_contexts.append(item_context)
-                if drop_flag == False:
-                    user_ratings = sess.run(model.batch_ratings, {model.users: [user],
+                    if drop_flag == False:
+                        user_ratings = sess.run(model.batch_ratings, {model.users: [user],
+                                                                        model.pos_items: item_batch,
+                                                                        model.contexts: item_contexts})
+                    else:
+                        user_ratings = sess.run(model.batch_ratings, {model.users: [user],
                                                                     model.pos_items: item_batch,
-                                                                    model.pos_items_context: item_contexts})
-                else:
-                    user_ratings = sess.run(model.batch_ratings, {model.users: [user],
-                                                                    model.pos_items: item_batch,
-                                                                    model.pos_items_context: item_contexts,
+                                                                    model.contexts: item_contexts,
                                                                     model.node_dropout: [0.] * len(eval(args.layer_size)),
                                                                     model.mess_dropout: [0.] * len(eval(args.layer_size))})
+                elif model.alg_type in ['csgcn-is']:           
+                    for item in item_batch:
+                        item_context = []
+                        for context_index, value in enumerate(context):
+                            value = data_generator.context_column_list[context_index] + str(value)
+                            item_context.append(data_generator.item_context_offset_dict[(item, value)])
+                        item_contexts.append(item_context)
+                    if drop_flag == False:
+                        user_ratings = sess.run(model.batch_ratings, {model.users: [user],
+                                                                        model.pos_items: item_batch,
+                                                                        model.pos_items_context: item_contexts})
+                    else:
+                        user_ratings = sess.run(model.batch_ratings, {model.users: [user],
+                                                                        model.pos_items: item_batch,
+                                                                        model.pos_items_context: item_contexts,
+                                                                        model.node_dropout: [0.] * len(eval(args.layer_size)),
+                                                                        model.mess_dropout: [0.] * len(eval(args.layer_size))})
                 rate_batch.append(np.squeeze(user_ratings))
         else:
             if drop_flag == False:
@@ -178,26 +200,16 @@ def test_loo(sess, model, users_to_test, drop_flag=False, train_set_flag=0):
         test_items = []
         if train_set_flag == 0:
             for user in user_batch:
-                if model.alg_type in ['csgcn']:
-                    test_items.append([itemId for itemId, _ in data_generator.test_set[user]])
-                else:
-                    test_items.append(data_generator.test_set[user])# (B, #test_items)
+                test_items.append(data_generator.test_items[user])# (B, #test_items)
 
             # set the ranking scores of training items to -inf,
             # then the training items will be sorted at the end of the ranking list.
             for idx, user in enumerate(user_batch):
-                if model.alg_type in ['csgcn']:
-                    train_items_off = [itemId for itemId, _ in data_generator.train_items[user]]
-                else:
-                    train_items_off = data_generator.train_items[user]
+                train_items_off = data_generator.train_items[user]
                 rate_batch[idx][train_items_off] = -np.inf
         else:
             for user in user_batch:
-                if model.alg_type in ['csgcn']:
-                    test_items.append([itemId for itemId, _ in data_generator.train_items[user]])
-                else:
-                    test_items.append(data_generator.train_items[user])
-
+                test_items.append(data_generator.train_items[user])
 
         batch_result = eval_score_matrix_loo(rate_batch, test_items, max_top)#(B,k*metric_num), max_top= 20
         count += len(batch_result)

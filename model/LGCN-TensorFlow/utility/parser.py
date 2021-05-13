@@ -8,7 +8,7 @@ Wang Xiang et al. Neural Graph Collaborative Filtering. In SIGIR 2019.
 import argparse
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Run NGCF.")
+    parser = argparse.ArgumentParser(description="Run CSGCN.")
     parser.add_argument('--weights_path', nargs='?', default='',
                         help='Store model path.')
     parser.add_argument('--data_path', nargs='?', default='../../Data/',
@@ -16,7 +16,7 @@ def parse_args():
     parser.add_argument('--proj_path', nargs='?', default='',
                         help='Project path.')
 
-    parser.add_argument('--dataset', nargs='?', default='yelpon',
+    parser.add_argument('--dataset', nargs='?', default='yelpnc',
                         help='Choose a dataset from {ml100k, frappe, yelpnc, yelpon, ml1m}')
     parser.add_argument('--pretrain', type=int, default=0,
                         help='0: No pretrain, -1: Pretrain with the learned embeddings, 1:Pretrain with stored models.')
@@ -33,20 +33,20 @@ def parse_args():
                         help='Embedding size.')
     parser.add_argument('--layer_size', nargs='?', default='[64, 64, 64, 64]',
                         help='Output sizes of every layer')
-    parser.add_argument('--batch_size', type=int, default=518,
+    parser.add_argument('--batch_size', type=int, default=227,
                         help='Batch size.')
 
     parser.add_argument('--regs', nargs='?', default='[1e-5,1e-5,1e-2]',
                         help='Regularizations.')
-    parser.add_argument('--lr', type=float, default=0.001,
+    parser.add_argument('--lr', type=float, default=0.0001,
                         help='Learning rate.')
 
     parser.add_argument('--model_type', nargs='?', default='lightgcn',
-                        help='Specify the name of model (lightgcn).')
+                        help='Specify the name of model (lightgcn, csgcn-is, csgcn-adj).')
     parser.add_argument('--adj_type', nargs='?', default='pre',
-                        help='Specify the type of the adjacency (laplacian) matrix from {plain, norm, mean}.')
+                        help='Specify the type of the adjacency (laplacian) matrix from {csgcn, pre, plain, norm, mean}.')
     parser.add_argument('--alg_type', nargs='?', default='lightgcn',
-                        help='Specify the type of the graph convolutional layer from {ngcf, gcn, gcmc}.')
+                        help='Specify the type of the graph convolutional layer from {csgcn-is, csgcn-adj, ngcf, gcn, gcmc}.')
 
     parser.add_argument('--gpu_id', type=int, default=0,
                         help='0 for NAIS_prod, 1 for NAIS_concat')
