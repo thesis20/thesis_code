@@ -735,7 +735,7 @@ if __name__ == '__main__':
             # *********************************************************
             # get the performance from pretrained model.
             if args.report != 1:
-                users_to_test = list(data_generator.test_set.keys())
+                users_to_test = list(data_generator.test_items.keys())
                 ret = test(sess, model, users_to_test, drop_flag=True)
                 cur_best_pre_0 = ret['recall'][0]
                 
@@ -762,7 +762,7 @@ if __name__ == '__main__':
     if args.report == 1:
         assert args.test_flag == 'full'
         users_to_test_list, split_state = data_generator.get_sparsity_split()
-        users_to_test_list.append(list(data_generator.test_set.keys()))
+        users_to_test_list.append(list(data_generator.test_items.keys()))
         split_state.append('all')
          
         report_path = '%sreport/%s/%s.result' % (args.proj_path, args.dataset, model.model_type)
@@ -849,7 +849,7 @@ if __name__ == '__main__':
             print('ERROR: loss is nan.')
             sys.exit()
         
-        if (epoch % 20) != 0:
+        if (epoch % 1) != 0:
             if args.verbose > 0 and epoch % args.verbose == 0:
                 perf_str = 'Epoch %d [%.1fs]: train==[%.5f=%.5f + %.5f]' % (
                     epoch, time() - t1, loss, mf_loss, emb_loss)
@@ -918,7 +918,7 @@ if __name__ == '__main__':
                                                 model.test_emb_loss: emb_loss_test, model.test_reg_loss: reg_loss_test})
         train_writer.add_summary(summary_test_loss, epoch // 20)
         t2 = time()
-        users_to_test = list(data_generator.test_set.keys())
+        users_to_test = list(data_generator.test_items.keys())
         if data_generator.eval_type == 'foldout':
             ret = test(sess, model, users_to_test, drop_flag=True)
             summary_test_acc = sess.run(model.merged_test_acc,

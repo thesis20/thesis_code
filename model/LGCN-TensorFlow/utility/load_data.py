@@ -238,7 +238,7 @@ class Data(object):
 
         self.R = sp.dok_matrix((self.n_users, self.n_items), dtype=np.float32)
 
-        self.train_items, self.test_set = {}, {}
+        self.train_items, self.train_interactions, self.test_items, self.test_interactions = {}, {}, {}, {}
         # Key: userID || value: list of positive interactions
         # self.R: [uid, i] = 1 for hver interaction
 
@@ -255,10 +255,12 @@ class Data(object):
                     contexts = contexts + (row[context],)
                 pos_interaction = pos_interaction + (contexts,)
 
-                if userId not in self.train_items:
-                    self.train_items[userId] = [pos_interaction]
+                if userId not in self.train_interactions:
+                    self.train_interactions[userId] = [pos_interaction]
+                    self.train_items[userId] = [pos_interaction[0]]
                 else:
-                    self.train_items[userId].append(pos_interaction)
+                    self.train_interactions[userId].append(pos_interaction)
+                    self.train_items[userId].append(pos_interaction[0])
 
                 # Add side-info dicts
                 # self.user_sideinfo_indexes
@@ -301,15 +303,17 @@ class Data(object):
                     contexts = contexts + (row[context],)
                 pos_interaction = pos_interaction + (contexts,)
 
-                if userId not in self.test_set:
-                    self.test_set[userId] = [pos_interaction]
+                if userId not in self.test_interactions:
+                    self.test_interactions[userId] = [pos_interaction]
+                    self.test_items[userId] = [pos_interaction[0]]
                 else:
-                    self.test_set[userId].append(pos_interaction)
+                    self.test_interactions[userId].append(pos_interaction)
+                    self.test_items[userId].append(pos_interaction[0])
             else:
-                if userId not in self.test_set:
-                    self.test_set[userId] = [itemId]
+                if userId not in self.test_items:
+                    self.test_items[userId] = [itemId]
                 else:
-                    self.test_set[userId].append(itemId)
+                    self.test_items[userId].append(itemId)
 
 
     def get_adj_mat(self):
@@ -474,7 +478,11 @@ class Data(object):
 
 
         def sample_pos_items_for_u(u, num):
-            pos_items = self.train_items[u]
+            if self.alg_type in ['csgcn-is', 'csgcn-adj']:
+                pos_items = self.train_interactions[u]
+            else:
+                pos_items = self.train_items[u]
+                
             n_pos_items = len(pos_items)
             pos_batch = []
             while True:
@@ -501,7 +509,7 @@ class Data(object):
                 if len(neg_items) == num: break
                 neg_id = np.random.randint(low=0, high=self.n_items,size=1)[0]
                 
-                if neg_id not in [itemId for itemId,_ in self.train_items[u]] and neg_id not in neg_items:
+                if neg_id not in self.train_items[u] and neg_id not in neg_items:
                     #if neg_id not in self.context_interactions[context]:
                     neg_items.append(neg_id)
             return neg_items
@@ -543,12 +551,15 @@ class Data(object):
 
     def sample_test(self):
         if self.batch_size <= self.n_users:
-            users = rd.sample(self.test_set.keys(), self.batch_size)
+            users = rd.sample(self.test_items.keys(), self.batch_size)
         else:
             users = [rd.choice(self.exist_users) for _ in range(self.batch_size)]
 
         def sample_pos_items_for_u(u, num):
-            pos_items = self.test_set[u]
+            if self.alg_type in ['csgcn-is', 'csgcn-adj']:
+                pos_items = self.test_interactions[u]
+            else:
+                pos_items = self.test_items[u]
             n_pos_items = len(pos_items)
             pos_batch = []
             while True:
@@ -565,12 +576,9 @@ class Data(object):
             while True:
                 if len(neg_items) == num: break
                 neg_id = np.random.randint(low=0, high=self.n_items, size=1)[0]
-                if self.alg_type in ['csgcn-is', 'csgcn-adj']:
-                    if neg_id not in [itemId for itemId,_ in (self.test_set[u]+self.train_items[u])] and neg_id not in neg_items:
-                        neg_items.append(neg_id)
-                else:
-                    if neg_id not in (self.test_set[u]+self.train_items[u]) and neg_id not in neg_items:
-                        neg_items.append(neg_id)
+                if neg_id not in (self.test_items[u]+self.train_items[u]) and neg_id not in neg_items:
+                    neg_items.append(neg_id)
+
             return neg_items
 
         def sample_neg_items_for_u_from_pools(u, num):
@@ -647,13 +655,13 @@ class Data(object):
 
 
     def create_sparsity_split(self):
-        all_users_to_test = list(self.test_set.keys())
+        all_users_to_test = list(self.test_items.keys())
         user_n_iid = dict()
 
         # generate a dictionary to store (key=n_iids, value=a list of uid).
         for uid in all_users_to_test:
             train_iids = self.train_items[uid]
-            test_iids = self.test_set[uid]
+            test_iids = self.test_items[uid]
 
             n_iids = len(train_iids) + len(test_iids)
 

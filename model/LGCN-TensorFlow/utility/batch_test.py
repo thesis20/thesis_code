@@ -97,25 +97,16 @@ def test(sess, model, users_to_test, drop_flag=False, train_set_flag=0):
         test_items = []
         if train_set_flag == 0:
             for user in user_batch:
-                if model.alg_type in ['csgcn-is', 'csgcn-adj']:
-                    test_items.append([itemId for itemId, _ in data_generator.test_set[user]])
-                else:
-                    test_items.append(data_generator.test_set[user])# (B, #test_items)
+                test_items.append(data_generator.test_items[user])# (B, #test_items)
 
             # set the ranking scores of training items to -inf,
             # then the training items will be sorted at the end of the ranking list.
             for idx, user in enumerate(user_batch):
-                if model.alg_type in ['csgcn-is', 'csgcn-adj']:
-                    train_items_off = [itemId for itemId, _ in data_generator.train_items[user]]
-                else:
-                    train_items_off = data_generator.train_items[user]
+                train_items_off = data_generator.train_items[user]
                 rate_batch[idx][train_items_off] = -np.inf
         else:
             for user in user_batch:
-                if model.alg_type in ['csgcn-is', 'csgcn-adj']:
-                    test_items.append([itemId for itemId, _ in data_generator.train_items[user]])
-                else:
-                    test_items.append(data_generator.train_items[user])
+                test_items.append(data_generator.train_items[user])
         
         batch_result = eval_score_matrix_foldout(rate_batch, test_items, max_top)#(B,k*metric_num), max_top= 20
         count += len(batch_result)
@@ -159,7 +150,7 @@ def test_loo(sess, model, users_to_test, drop_flag=False, train_set_flag=0):
         if model.alg_type in ['csgcn-is', 'csgcn-adj']:
             rate_batch = []
             for user in user_batch:
-                test_interaction = data_generator.test_set[user][0]
+                test_interaction = data_generator.test_interactions[user][0]
                 context = test_interaction[1]
                 item_contexts = []
                 if model.alg_type in ['csgcn-adj']:
@@ -209,26 +200,16 @@ def test_loo(sess, model, users_to_test, drop_flag=False, train_set_flag=0):
         test_items = []
         if train_set_flag == 0:
             for user in user_batch:
-                if model.alg_type in ['csgcn-is', 'csgcn-adj']:
-                    test_items.append([itemId for itemId, _ in data_generator.test_set[user]])
-                else:
-                    test_items.append(data_generator.test_set[user])# (B, #test_items)
+                test_items.append(data_generator.test_items[user])# (B, #test_items)
 
             # set the ranking scores of training items to -inf,
             # then the training items will be sorted at the end of the ranking list.
             for idx, user in enumerate(user_batch):
-                if model.alg_type in ['csgcn-is', 'csgcn-adj']:
-                    train_items_off = [itemId for itemId, _ in data_generator.train_items[user]]
-                else:
-                    train_items_off = data_generator.train_items[user]
+                train_items_off = data_generator.train_items[user]
                 rate_batch[idx][train_items_off] = -np.inf
         else:
             for user in user_batch:
-                if model.alg_type in ['csgcn-is', 'csgcn-adj']:
-                    test_items.append([itemId for itemId, _ in data_generator.train_items[user]])
-                else:
-                    test_items.append(data_generator.train_items[user])
-
+                test_items.append(data_generator.train_items[user])
 
         batch_result = eval_score_matrix_loo(rate_batch, test_items, max_top)#(B,k*metric_num), max_top= 20
         count += len(batch_result)

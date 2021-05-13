@@ -41,11 +41,11 @@ def parse_args():
     parser.add_argument('--lr', type=float, default=0.0001,
                         help='Learning rate.')
 
-    parser.add_argument('--model_type', nargs='?', default='csgcn-adj',
+    parser.add_argument('--model_type', nargs='?', default='lightgcn',
                         help='Specify the name of model (lightgcn, csgcn-is, csgcn-adj).')
     parser.add_argument('--adj_type', nargs='?', default='pre',
                         help='Specify the type of the adjacency (laplacian) matrix from {csgcn, pre, plain, norm, mean}.')
-    parser.add_argument('--alg_type', nargs='?', default='csgcn-adj',
+    parser.add_argument('--alg_type', nargs='?', default='lightgcn',
                         help='Specify the type of the graph convolutional layer from {csgcn-is, csgcn-adj, ngcf, gcn, gcmc}.')
 
     parser.add_argument('--gpu_id', type=int, default=0,
