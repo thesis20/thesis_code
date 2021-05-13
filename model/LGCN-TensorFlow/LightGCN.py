@@ -169,9 +169,9 @@ class LightGCN(object):
             self.ua_embeddings, self.ia_embeddings = self._create_gcn_embed()
         elif self.alg_type in ['gcmc']:
             self.ua_embeddings, self.ia_embeddings = self._create_gcmc_embed()
-        if self.alg_type in ['csgcn-adj']:
+        elif self.alg_type in ['csgcn-adj']:
             self.ua_embeddings, self.ia_embeddings = self._create_csgcn_with_context_embed()
-        if self.alg_type in ['csgcn-is']:
+        elif self.alg_type in ['csgcn-is']:
             self.ua_embeddings, self.ia_embeddings = self._create_csgcn_embed()
 
         """
@@ -579,14 +579,14 @@ class sample_thread(threading.Thread):
         threading.Thread.__init__(self)
     def run(self):
         with tf.device(cpus[0]):
-            self.data = data_generator.sample(args.adj_type)
+            self.data = data_generator.sample()
 
 class sample_thread_test(threading.Thread):
     def __init__(self):
         threading.Thread.__init__(self)
     def run(self):
         with tf.device(cpus[0]):
-            self.data = data_generator.sample_test(args.adj_type)
+            self.data = data_generator.sample_test()
             
 # training on GPU
 class train_thread(threading.Thread):

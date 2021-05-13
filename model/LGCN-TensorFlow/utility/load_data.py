@@ -316,7 +316,7 @@ class Data(object):
         if self.alg_type in ['csgcn-is']:
             prefix = '/csgcn-is/' + '-'.join([str(elem) for elem in self.context_column_list])
         elif self.alg_type in ['csgcn-adj']:
-            prefix = '/csgcn-adj'  + '-'.join([str(elem) for elem in self.context_column_list])
+            prefix = '/csgcn-adj/'  + '-'.join([str(elem) for elem in self.context_column_list])
         else:
             print(f"self.alg_type: {self.alg_type}")
             prefix = '/lgcn'
@@ -466,7 +466,7 @@ class Data(object):
             self.neg_pools[u] = pools
         print('refresh negative pools', time() - t1)
 
-    def sample(self, adj_type=None):
+    def sample(self):
         if self.batch_size <= self.n_users:
             users = rd.sample(list(self.exist_users), self.batch_size)
         else:
@@ -541,7 +541,7 @@ class Data(object):
         else:
             return users, pos_items, neg_items
 
-    def sample_test(self, adj_type=None):
+    def sample_test(self):
         if self.batch_size <= self.n_users:
             users = rd.sample(self.test_set.keys(), self.batch_size)
         else:
