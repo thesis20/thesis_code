@@ -1,0 +1,2 @@
+model_checkpoint_path: "yelpnc_64"
+all_model_checkpoint_paths: "yelpnc_64"
