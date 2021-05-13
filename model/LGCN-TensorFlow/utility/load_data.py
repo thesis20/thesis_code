@@ -9,6 +9,7 @@ import numpy as np
 import random as rd
 import scipy.sparse as sp
 from time import time
+import os
 import pandas as pd
 
 rd.seed(2021)
@@ -72,7 +73,7 @@ class Data(object):
 
         self.n_user_sideinfo, self.n_item_sideinfo = self.sideinfo_counter()
 
-        if self.alg_type in ['csgcn']:
+        if self.alg_type in ['csgcn-is', 'csgcn-adj']:
             self.test_context_combinations = self.get_test_context_combinations()
             self.context_interactions = self.get_context_interactions()
             
@@ -191,7 +192,7 @@ class Data(object):
         self.n_train = len(self.train_df.index)
         self.n_test = len(self.test_df.index)
 
-        if self.alg_type in ['csgcn']:
+        if self.alg_type in ['csgcn-is', 'csgcn-adj']:
             context_offset_dict = {}
             item_context_offset_dict = {}
             item_sideinfo_offset_dict = {}
@@ -247,7 +248,7 @@ class Data(object):
             self.R[userId, itemId] = 1.
 
 
-            if self.alg_type in ['csgcn']:
+            if self.alg_type in ['csgcn-is', 'csgcn-adj']:
                 pos_interaction = (row[self.item_column_name],)
                 contexts = tuple()
                 for context in self.context_column_list:
@@ -284,7 +285,7 @@ class Data(object):
                     self.train_items[userId].append(itemId)
 
         # If in CSGCN, add sideinfo
-        if self.alg_type in ['csgcn']:
+        if self.alg_type in ['csgcn-is', 'csgcn-adj']:
             self.user_sideinfo_dict = user_sideinfo_dict
             self.item_sideinfo_dict = item_sideinfo_dict
 
@@ -292,7 +293,7 @@ class Data(object):
             userId = row[self.user_column_name]
             itemId = row[self.item_column_name]
 
-            if self.alg_type in ['csgcn']:
+            if self.alg_type in ['csgcn-is', 'csgcn-adj']:
                 pos_interaction = (row[self.item_column_name],)
                 contexts = tuple()
 
@@ -312,9 +313,12 @@ class Data(object):
 
 
     def get_adj_mat(self):
-        if self.alg_type in ['csgcn']:
-            prefix = '/csgcn'
+        if self.alg_type in ['csgcn-is']:
+            prefix = '/csgcn-is/' + '-'.join([str(elem) for elem in self.context_column_list])
+        elif self.alg_type in ['csgcn-adj']:
+            prefix = '/csgcn-adj'  + '-'.join([str(elem) for elem in self.context_column_list])
         else:
+            print(f"self.alg_type: {self.alg_type}")
             prefix = '/lgcn'
 
         try:
@@ -327,12 +331,15 @@ class Data(object):
 
         except Exception:
             adj_mat, norm_adj_mat, mean_adj_mat = self.create_adj_mat()
+            if not os.path.exists(self.path + prefix):
+                os.makedirs(self.path + prefix)
             sp.save_npz(self.path + prefix + '/s_adj_mat.npz', adj_mat)
             sp.save_npz(self.path + prefix + '/s_norm_adj_mat.npz', norm_adj_mat)
             sp.save_npz(self.path + prefix + '/s_mean_adj_mat.npz', mean_adj_mat)
 
         try:
             pre_adj_mat = sp.load_npz(self.path + prefix + '/s_pre_adj_mat.npz')
+            csgcn_adj_mat = sp.load_npz(self.path + prefix + '/s_csgcn_adj_mat.npz')
         except Exception:
             adj_mat=adj_mat
             rowsum = np.array(adj_mat.sum(1))
@@ -348,10 +355,6 @@ class Data(object):
             pre_adj_mat = norm_adj.tocsr()
             sp.save_npz(self.path + prefix + '/s_pre_adj_mat.npz', norm_adj)
             sp.save_npz(self.path + prefix + '/s_csgcn_adj_mat.npz', csgcn_adj_mat)
-            
-            print("SHAPES")
-            print(norm_adj.shape)
-            print(csgcn_adj_mat.shape)
 
         return adj_mat, norm_adj_mat, mean_adj_mat,pre_adj_mat,csgcn_adj_mat
 
@@ -359,7 +362,11 @@ class Data(object):
         t1 = time()
 
         def csgcn_adj():
-            adj_size = self.n_users + self.n_items + self.n_user_sideinfo + self.n_item_sideinfo + self.n_contexts
+            if self.alg_type in ['csgcn-adj']:
+                adj_size = self.n_users + self.n_items + self.n_user_sideinfo + self.n_item_sideinfo + self.n_contexts
+            elif self.alg_type in ['csgcn-is']:
+                adj_size = self.n_users + self.n_items + self.n_user_sideinfo + self.n_item_sideinfo
+                
             adj_mat = sp.dok_matrix((adj_size, adj_size), dtype=np.float32).tolil()
             R = self.R.tolil()
 
@@ -384,21 +391,22 @@ class Data(object):
                     adj_mat[item_sideinfo_offset, itemId] = 1 # USt (OneHot)
                 for multihot in item_sideinfos[1]: # Multihot
                     item_sideinfo_offset = self.n_users + self.n_items + self.n_user_sideinfo + multihot
-                    adj_mat[itemId, item_sideinfo_offset] = 1 / len(item_sideinfos[1]) # US (Multihot)
-                    adj_mat[item_sideinfo_offset, itemId] = 1 / len(item_sideinfos[1]) # USt (Multihot)
+                    adj_mat[itemId, item_sideinfo_offset] = 1 # US (Multihot)
+                    adj_mat[item_sideinfo_offset, itemId] = 1 # USt (Multihot)
 
                 adj_mat[userId, item_offset] = 1 # R
                 adj_mat[item_offset, userId] = 1 # Rt
                 
-                # Add context to last column
-                for context_index in context_indexes:
-                    context_offset = self.n_users + self.n_items + self.n_user_sideinfo + self.n_item_sideinfo + context_index
-                    adj_mat[userId, context_offset] = 1 # UC
-                    adj_mat[item_offset, context_offset] = 1 # IC
-                # 2I to counter normalization term
-                for i in range(self.n_contexts):
-                    offset = self.n_users + self.n_items + self.n_user_sideinfo + self.n_item_sideinfo
-                    adj_mat[i + offset,i + offset] = 2
+                if self.alg_type in ['csgcn-adj']:
+                    # Add context to last column
+                    for context_index in context_indexes:
+                        context_offset = self.n_users + self.n_items + self.n_user_sideinfo + self.n_item_sideinfo + context_index
+                        adj_mat[userId, context_offset] = 1 # UC
+                        adj_mat[item_offset, context_offset] = 1 # IC
+                    # 2I to counter normalization term
+                    for i in range(self.n_contexts):
+                        offset = self.n_users + self.n_items + self.n_user_sideinfo + self.n_item_sideinfo
+                        adj_mat[i + offset,i + offset] = 2
 
             return adj_mat
 
@@ -419,7 +427,7 @@ class Data(object):
             print('already create adjacency matrix', adj_mat.shape, time() - t1)
             return adj_mat
 
-        if self.alg_type in ['csgcn']:
+        if self.alg_type in ['csgcn-is', 'csgcn-adj']:
             adj_mat = csgcn_adj()
         else:
             adj_mat = lgcn_adj()
@@ -494,8 +502,8 @@ class Data(object):
                 neg_id = np.random.randint(low=0, high=self.n_items,size=1)[0]
                 
                 if neg_id not in [itemId for itemId,_ in self.train_items[u]] and neg_id not in neg_items:
-                    if neg_id not in self.context_interactions[context]:
-                        neg_items.append(neg_id)
+                    #if neg_id not in self.context_interactions[context]:
+                    neg_items.append(neg_id)
             return neg_items
 
         def sample_neg_items_for_u_from_pools(u, num):
@@ -504,7 +512,7 @@ class Data(object):
 
         pos_items, neg_items, pos_items_context, neg_items_context = [], [], [], []
         for u in users:
-            if self.alg_type in ['csgcn']:
+            if self.alg_type in ['csgcn-is', 'csgcn-adj']:
                 pos_item_id, context = sample_pos_items_for_u(u, 1)[0]
                 neg_item_id = sample_neg_items_for_u_csgcn(u, 1, context)[0]
                 pos_items.append(pos_item_id)
@@ -512,10 +520,10 @@ class Data(object):
 
                 pos_item_context, neg_item_context = [], []
                 
-                if adj_type in ['csgcn']:
+                if self.alg_type in ['csgcn-adj']:
                     for index, context_col in enumerate(self.context_column_list, 0):
                         pos_item_context.append(self.context_offset_dict[context_col + str(context[index])])
-                else:
+                elif self.alg_type in ['csgcn-is']:
                     for index, context_col in enumerate(self.context_column_list, 0):
                         pos_item_context.append(self.item_context_offset_dict[(pos_item_id, context_col + str(context[index]))])
                         neg_item_context.append(self.item_context_offset_dict[(neg_item_id, context_col + str(context[index]))])
@@ -526,10 +534,9 @@ class Data(object):
                 pos_items += sample_pos_items_for_u(u, 1)
                 neg_items += sample_neg_items_for_u(u, 1)
 
-        if self.alg_type in ['csgcn']:
-            if adj_type in ['csgcn']:
-                return users, pos_items, neg_items, pos_items_context
-            else:
+        if self.alg_type in ['csgcn-adj']:
+            return users, pos_items, neg_items, pos_items_context
+        elif self.alg_type in ['csgcn-is']:
                 return users, pos_items, neg_items, pos_items_context, neg_items_context
         else:
             return users, pos_items, neg_items
@@ -558,7 +565,7 @@ class Data(object):
             while True:
                 if len(neg_items) == num: break
                 neg_id = np.random.randint(low=0, high=self.n_items, size=1)[0]
-                if self.alg_type in ['csgcn']:
+                if self.alg_type in ['csgcn-is', 'csgcn-adj']:
                     if neg_id not in [itemId for itemId,_ in (self.test_set[u]+self.train_items[u])] and neg_id not in neg_items:
                         neg_items.append(neg_id)
                 else:
@@ -572,7 +579,7 @@ class Data(object):
 
         for u in users:
             pos_items, neg_items = [], []
-            if self.alg_type in ['csgcn']:
+            if self.alg_type in ['csgcn-is', 'csgcn-adj']:
                 pos_items_context, neg_items_context = [], []
                 pos_item_id, context = sample_pos_items_for_u(u, 1)[0]
                 neg_item_id = sample_neg_items_for_u(u, 1)[0]
@@ -580,7 +587,7 @@ class Data(object):
                 neg_items.append(neg_item_id)
 
                 pos_item_context, neg_item_context = [], []
-                if adj_type in ['csgcn']:
+                if self.alg_type in ['csgcn-adj']:
                     for index, context_col in enumerate(self.context_column_list, 0):
                         pos_item_context.append(self.context_offset_dict[context_col + str(context[index])])
                 else:
@@ -594,11 +601,10 @@ class Data(object):
                 pos_items += sample_pos_items_for_u(u, 1)
                 neg_items += sample_neg_items_for_u(u, 1)
 
-        if self.alg_type in ['csgcn']:
-            if adj_type in ['csgcn']:
+        if self.alg_type in ['csgcn-adj']:
                 return users, pos_items, neg_items, pos_items_context
-            else:
-                return users, pos_items, neg_items, pos_items_context, neg_items_context
+        elif self.alg_type in ['csgcn-is']:
+            return users, pos_items, neg_items, pos_items_context, neg_items_context
         else:
             return users, pos_items, neg_items
 

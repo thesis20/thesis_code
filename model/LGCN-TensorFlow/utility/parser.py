@@ -8,7 +8,7 @@ Wang Xiang et al. Neural Graph Collaborative Filtering. In SIGIR 2019.
 import argparse
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Run NGCF.")
+    parser = argparse.ArgumentParser(description="Run CSGCN.")
     parser.add_argument('--weights_path', nargs='?', default='',
                         help='Store model path.')
     parser.add_argument('--data_path', nargs='?', default='../../Data/',
@@ -24,7 +24,7 @@ def parse_args():
                         help='Interval of evaluation.')
     parser.add_argument('--is_norm', type=int, default=1,
                     help='Interval of evaluation.')
-    parser.add_argument('--epoch', type=int, default=200,
+    parser.add_argument('--epoch', type=int, default=1000,
                         help='Number of epoch.')
     parser.add_argument('--eval_type', type=str, default='foldout',
                         help='type of evaluation from {foldout, loo}')
@@ -38,15 +38,15 @@ def parse_args():
 
     parser.add_argument('--regs', nargs='?', default='[1e-5,1e-5,1e-2]',
                         help='Regularizations.')
-    parser.add_argument('--lr', type=float, default=0.001,
+    parser.add_argument('--lr', type=float, default=0.0001,
                         help='Learning rate.')
 
-    parser.add_argument('--model_type', nargs='?', default='csgcn',
-                        help='Specify the name of model (lightgcn).')
-    parser.add_argument('--adj_type', nargs='?', default='csgcn',
+    parser.add_argument('--model_type', nargs='?', default='csgcn-adj',
+                        help='Specify the name of model (lightgcn, csgcn-is, csgcn-adj).')
+    parser.add_argument('--adj_type', nargs='?', default='pre',
                         help='Specify the type of the adjacency (laplacian) matrix from {csgcn, pre, plain, norm, mean}.')
-    parser.add_argument('--alg_type', nargs='?', default='csgcn',
-                        help='Specify the type of the graph convolutional layer from {ngcf, gcn, gcmc}.')
+    parser.add_argument('--alg_type', nargs='?', default='csgcn-adj',
+                        help='Specify the type of the graph convolutional layer from {csgcn-is, csgcn-adj, ngcf, gcn, gcmc}.')
 
     parser.add_argument('--gpu_id', type=int, default=0,
                         help='0 for NAIS_prod, 1 for NAIS_concat')

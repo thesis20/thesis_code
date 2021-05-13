@@ -30,11 +30,11 @@ class LightGCN(object):
         self.pretrain_data = pretrain_data
         self.n_users = data_config['n_users']
         self.n_items = data_config['n_items']
-        if self.alg_type in ['csgcn']:
+        if self.alg_type in ['csgcn-is', 'csgcn-adj']:
             self.n_contexts = data_config['n_contexts']
             self.n_user_sideinfo = data_config['n_user_sideinfo']
             self.n_item_sideinfo = data_config['n_item_sideinfo']
-        self.n_fold = 1
+        self.n_fold = 100
         self.norm_adj = data_config['norm_adj']
         self.n_nonzero_elems = self.norm_adj.count_nonzero()
         self.lr = args.lr
@@ -58,10 +58,10 @@ class LightGCN(object):
         self.pos_items = tf.placeholder(tf.int32, shape=(None,))
         self.neg_items = tf.placeholder(tf.int32, shape=(None,))
 
-        if self.alg_type in ['csgcn']:
+        if self.alg_type in ['csgcn-is', 'csgcn-adj']:
             self.user_sideinfo = tf.placeholder(tf.int32, shape=(None, None))
             self.item_sideinfo = tf.placeholder(tf.int32, shape=(None, None))
-            if self.adj_type in ['csgcn']:
+            if self.alg_type in ['csgcn-adj']:
                 self.contexts = tf.placeholder(tf.int32, shape=(None,None))
             else:
                 self.pos_items_context = tf.placeholder(tf.int32, shape=(None, None))
@@ -163,21 +163,16 @@ class LightGCN(object):
         """
         if self.alg_type in ['lightgcn']:
             self.ua_embeddings, self.ia_embeddings = self._create_lightgcn_embed()
-
-        if self.alg_type in ['csgcn']:
-            if self.adj_type in ['csgcn']:
-                self.ua_embeddings, self.ia_embeddings = self._create_csgcn_with_context_embed()
-            else:
-                self.ua_embeddings, self.ia_embeddings = self._create_csgcn_embed()
-            
         elif self.alg_type in ['ngcf']:
             self.ua_embeddings, self.ia_embeddings = self._create_ngcf_embed()
-
         elif self.alg_type in ['gcn']:
             self.ua_embeddings, self.ia_embeddings = self._create_gcn_embed()
-
         elif self.alg_type in ['gcmc']:
             self.ua_embeddings, self.ia_embeddings = self._create_gcmc_embed()
+        if self.alg_type in ['csgcn-adj']:
+            self.ua_embeddings, self.ia_embeddings = self._create_csgcn_with_context_embed()
+        if self.alg_type in ['csgcn-is']:
+            self.ua_embeddings, self.ia_embeddings = self._create_csgcn_embed()
 
         """
         *********************************************************
@@ -190,32 +185,31 @@ class LightGCN(object):
         self.pos_i_g_embeddings_pre = tf.nn.embedding_lookup(self.weights['item_embedding'], self.pos_items)
         self.neg_i_g_embeddings_pre = tf.nn.embedding_lookup(self.weights['item_embedding'], self.neg_items)
 
-        if self.alg_type in ['csgcn']:
-            if self.adj_type in ['csgcn']:
-                self.context_embeddings = tf.nn.embedding_lookup(self.weights['context_embedding'], self.contexts)
-                self.context_embeddings = tf.reduce_mean(self.context_embeddings, axis=1)
-            else:
-                self.pos_item_context_pre = tf.nn.embedding_lookup(self.weights['item_context_embedding'], self.pos_items_context)
-                self.neg_item_context_pre = tf.nn.embedding_lookup(self.weights['item_context_embedding'], self.neg_items_context)
-                self.pos_item_context_pre = tf.reduce_mean(self.pos_item_context_pre, axis=1)
-                self.neg_item_context_pre = tf.reduce_mean(self.neg_item_context_pre, axis=1)
+        if self.alg_type in ['csgcn-adj', 'csgcn-is']:
             self.user_sideinfo_embeddings = tf.nn.embedding_lookup(self.weights['user_sideinfo_embedding'], self.user_sideinfo)
             self.item_sideinfo_embeddings = tf.nn.embedding_lookup(self.weights['item_sideinfo_embedding'], self.item_sideinfo)
+        if self.alg_type in ['csgcn-adj']:
+            self.context_embeddings = tf.nn.embedding_lookup(self.weights['context_embedding'], self.contexts)
+            self.context_embeddings = tf.reduce_mean(self.context_embeddings, axis=1)
+        if self.alg_type in ['csgcn-is']:
+            self.pos_item_context_pre = tf.nn.embedding_lookup(self.weights['item_context_embedding'], self.pos_items_context)
+            self.neg_item_context_pre = tf.nn.embedding_lookup(self.weights['item_context_embedding'], self.neg_items_context)
+            self.pos_item_context_pre = tf.reduce_mean(self.pos_item_context_pre, axis=1)
+            self.neg_item_context_pre = tf.reduce_mean(self.neg_item_context_pre, axis=1)
 
         """
         *********************************************************
         Inference for the testing phase.
         """
-        if self.alg_type in ['csgcn']:
-            if self.adj_type in ['csgcn']:
-                uc = tf.matmul(self.u_g_embeddings, self.context_embeddings, transpose_a=False, transpose_b=True, name='uc')
-                ui_pos = tf.matmul(self.u_g_embeddings, self.pos_i_g_embeddings, transpose_a=False, transpose_b=True, name='ui')
-                ic_pos = tf.multiply(self.pos_i_g_embeddings, self.context_embeddings, name='ic')
-                ic_pos_sum = tf.reduce_sum(ic_pos, axis=1)
-                self.batch_ratings = 0.5 * (uc + ui_pos + ic_pos_sum)
-            else:
-                self.pos_i_g_c_embeddings = tf.add(self.pos_item_context_pre, self.pos_i_g_embeddings)
-                self.batch_ratings = tf.matmul(self.u_g_embeddings, self.pos_i_g_c_embeddings, transpose_a=False, transpose_b=True)
+        if self.alg_type in ['csgcn-adj']:
+            uc = tf.matmul(self.u_g_embeddings, self.context_embeddings, transpose_a=False, transpose_b=True, name='uc')
+            ui_pos = tf.matmul(self.u_g_embeddings, self.pos_i_g_embeddings, transpose_a=False, transpose_b=True, name='ui')
+            ic_pos = tf.multiply(self.pos_i_g_embeddings, self.context_embeddings, name='ic')
+            ic_pos_sum = tf.reduce_sum(ic_pos, axis=1)
+            self.batch_ratings = uc + ui_pos + ic_pos_sum
+        elif self.alg_type in ['csgcn-is']:
+            self.pos_i_g_c_embeddings = tf.add(self.pos_item_context_pre, self.pos_i_g_embeddings)
+            self.batch_ratings = tf.matmul(self.u_g_embeddings, self.pos_i_g_c_embeddings, transpose_a=False, transpose_b=True)
         else:
             self.batch_ratings = tf.matmul(self.u_g_embeddings, self.pos_i_g_embeddings, transpose_a=False, transpose_b=True)
 
@@ -223,8 +217,8 @@ class LightGCN(object):
         *********************************************************
         Generate Predictions & Optimize via BPR loss.
         """
-        if self.alg_type in ['csgcn']:
-            context = self.context_embeddings if self.adj_type in ['csgcn'] else None
+        if self.alg_type in ['csgcn-is', 'csgcn-adj']:
+            context = self.context_embeddings if self.alg_type in ['csgcn-adj'] else None
             self.mf_loss, self.emb_loss, self.reg_loss = self.create_bpr_loss_csgcn(self.u_g_embeddings,
                                                                             self.pos_i_g_embeddings,
                                                                             self.neg_i_g_embeddings,
@@ -250,8 +244,8 @@ class LightGCN(object):
         if self.pretrain_data is None:
             all_weights['user_embedding'] = tf.Variable(initializer([self.n_users, self.emb_dim]), name='user_embedding')
             all_weights['item_embedding'] = tf.Variable(initializer([self.n_items, self.emb_dim]), name='item_embedding')
-            if self.alg_type in ['csgcn']:
-                if self.adj_type in ['csgcn']:
+            if self.alg_type in ['csgcn-is', 'csgcn-adj']:
+                if self.alg_type in ['csgcn-adj']:
                     all_weights['context_embedding'] = tf.Variable(initializer([self.n_contexts, self.emb_dim]), name='context_embedding')
                 else:
                     all_weights['item_context_embedding'] = tf.Variable(initializer([self.n_items*self.n_contexts, self.emb_dim]), name='item_context_embedding')
@@ -265,8 +259,8 @@ class LightGCN(object):
                                                         name='user_embedding', dtype=tf.float32)
             all_weights['item_embedding'] = tf.Variable(initial_value=self.pretrain_data['item_embed'], trainable=True,
                                                         name='item_embedding', dtype=tf.float32)
-            if self.alg_type in ['csgcn']:
-                if self.adj_type in ['csgcn']:
+            if self.alg_type in ['csgcn-is', 'csgcn-adj']:
+                if self.alg_type in ['csgcn-adj']:
                     all_weights['context_embedding'] = tf.Variable(initial_value=self.pretrain_data['context_embedding'], trainable=True,
                                                             name='context_embedding', dtype=tf.float32)                
                 else:
@@ -300,10 +294,9 @@ class LightGCN(object):
     def _split_A_hat(self, X):
         A_fold_hat = []
 
-        if self.alg_type in ['csgcn']:
-            if self.adj_type in ['csgcn']:
-                adj_size = self.n_users + self.n_items + self.n_user_sideinfo + self.n_item_sideinfo + self.n_contexts
-            else:
+        if self.alg_type in ['csgcn-adj']:
+            adj_size = self.n_users + self.n_items + self.n_user_sideinfo + self.n_item_sideinfo + self.n_contexts
+        elif self.alg_type in ['csgcn-is']:
                 adj_size = self.n_users + self.n_items + self.n_user_sideinfo + self.n_item_sideinfo
         else:
             adj_size = self.n_users + self.n_items
@@ -323,8 +316,10 @@ class LightGCN(object):
     def _split_A_hat_node_dropout(self, X):
         A_fold_hat = []
 
-        if self.alg_type in ['csgcn']:
-            adj_size = self.n_users + self.n_items + self.n_user_sideinfo + self.n_item_sideinfo
+        if self.alg_type in ['csgcn-adj']:
+            adj_size = self.n_users + self.n_items + self.n_user_sideinfo + self.n_item_sideinfo + self.n_contexts
+        elif self.alg_type in ['csgcn-is']:
+                adj_size = self.n_users + self.n_items + self.n_user_sideinfo + self.n_item_sideinfo
         else:
             adj_size = self.n_users + self.n_items
         fold_len = adj_size // self.n_fold
@@ -505,7 +500,7 @@ class LightGCN(object):
         return u_g_embeddings, i_g_embeddings
 
     def create_bpr_loss_csgcn(self, users, pos_items, neg_items, context):
-        if self.adj_type in ['csgcn']:
+        if self.alg_type in ['csgcn-adj']:
             uc = tf.multiply(users, context, name='uc_mul')
             ui_pos = tf.multiply(users, pos_items, name='ui_pos_mul')
             ic_pos = tf.multiply(pos_items, context, name='ic_pos_mul')
@@ -516,7 +511,7 @@ class LightGCN(object):
             regularizer = tf.nn.l2_loss(self.u_g_embeddings_pre) + tf.nn.l2_loss(
                         self.pos_i_g_embeddings_pre) + tf.nn.l2_loss(self.neg_i_g_embeddings_pre) \
                         + tf.nn.l2_loss(self.context_embeddings)
-        else:
+        elif self.alg_type in ['csgcn-is']:
             pos_items = tf.add(pos_items, self.pos_item_context_pre)
             neg_items = tf.add(neg_items, self.neg_item_context_pre)
             pos_scores = tf.reduce_sum(tf.multiply(users, pos_items), axis=1)
@@ -602,24 +597,23 @@ class train_thread(threading.Thread):
         self.sample = sample
     def run(self):
 
-        if self.model.alg_type in ['csgcn']:
-            if self.model.adj_type in ['csgcn']:
-                users, pos_items, neg_items, context = self.sample.data
-                self.data = sess.run([self.model.opt, self.model.loss, self.model.mf_loss, self.model.emb_loss, self.model.reg_loss],
-                        feed_dict={model.users: users, model.pos_items: pos_items,
-                                    model.node_dropout: eval(args.node_dropout),
-                                    model.mess_dropout: eval(args.mess_dropout),
-                                    model.neg_items: neg_items,
-                                    model.contexts: context})
-            else:
-                users, pos_items, neg_items, pos_items_context, neg_items_context = self.sample.data
-                self.data = sess.run([self.model.opt, self.model.loss, self.model.mf_loss, self.model.emb_loss, self.model.reg_loss],
-                                        feed_dict={model.users: users, model.pos_items: pos_items,
-                                                    model.node_dropout: eval(args.node_dropout),
-                                                    model.mess_dropout: eval(args.mess_dropout),
-                                                    model.neg_items: neg_items,
-                                                    model.pos_items_context: pos_items_context,
-                                                    model.neg_items_context: neg_items_context})
+        if self.model.alg_type in ['csgcn-adj']:
+            users, pos_items, neg_items, context = self.sample.data
+            self.data = sess.run([self.model.opt, self.model.loss, self.model.mf_loss, self.model.emb_loss, self.model.reg_loss],
+                    feed_dict={model.users: users, model.pos_items: pos_items,
+                                model.node_dropout: eval(args.node_dropout),
+                                model.mess_dropout: eval(args.mess_dropout),
+                                model.neg_items: neg_items,
+                                model.contexts: context})
+        elif self.model.alg_type in ['csgcn-is']:
+            users, pos_items, neg_items, pos_items_context, neg_items_context = self.sample.data
+            self.data = sess.run([self.model.opt, self.model.loss, self.model.mf_loss, self.model.emb_loss, self.model.reg_loss],
+                                    feed_dict={model.users: users, model.pos_items: pos_items,
+                                                model.node_dropout: eval(args.node_dropout),
+                                                model.mess_dropout: eval(args.mess_dropout),
+                                                model.neg_items: neg_items,
+                                                model.pos_items_context: pos_items_context,
+                                                model.neg_items_context: neg_items_context})
         else:
             users, pos_items, neg_items = self.sample.data
             self.data = sess.run([self.model.opt, self.model.loss, self.model.mf_loss, self.model.emb_loss, self.model.reg_loss],
@@ -636,24 +630,23 @@ class train_thread_test(threading.Thread):
         self.sample = sample
 
     def run(self):
-        if self.model.alg_type in ['csgcn']:
-            if self.model.adj_type in ['csgcn']:
-                users, pos_items, neg_items, pos_items_context = self.sample.data
-                self.data = sess.run([self.model.loss, self.model.mf_loss, self.model.emb_loss],
-                                        feed_dict={model.users: users, model.pos_items: pos_items,
-                                                model.neg_items: neg_items,
-                                                model.node_dropout: eval(args.node_dropout),
-                                                model.mess_dropout: eval(args.mess_dropout),
-                                                model.contexts: pos_items_context})
-            else:
-                users, pos_items, neg_items, pos_items_context, neg_items_context = self.sample.data
-                self.data = sess.run([self.model.loss, self.model.mf_loss, self.model.emb_loss],
-                                        feed_dict={model.users: users, model.pos_items: pos_items,
-                                                model.neg_items: neg_items,
-                                                model.node_dropout: eval(args.node_dropout),
-                                                model.mess_dropout: eval(args.mess_dropout),
-                                                model.pos_items_context: pos_items_context,
-                                                model.neg_items_context: neg_items_context})
+        if self.model.alg_type in ['csgcn-adj']:
+            users, pos_items, neg_items, pos_items_context = self.sample.data
+            self.data = sess.run([self.model.loss, self.model.mf_loss, self.model.emb_loss],
+                                    feed_dict={model.users: users, model.pos_items: pos_items,
+                                            model.neg_items: neg_items,
+                                            model.node_dropout: eval(args.node_dropout),
+                                            model.mess_dropout: eval(args.mess_dropout),
+                                            model.contexts: pos_items_context})
+        elif self.model.alg_type in ['csgcn-is']:
+            users, pos_items, neg_items, pos_items_context, neg_items_context = self.sample.data
+            self.data = sess.run([self.model.loss, self.model.mf_loss, self.model.emb_loss],
+                                    feed_dict={model.users: users, model.pos_items: pos_items,
+                                            model.neg_items: neg_items,
+                                            model.node_dropout: eval(args.node_dropout),
+                                            model.mess_dropout: eval(args.mess_dropout),
+                                            model.pos_items_context: pos_items_context,
+                                            model.neg_items_context: neg_items_context})
         else:
             users, pos_items, neg_items = self.sample.data
             self.data = sess.run([self.model.loss, self.model.mf_loss, self.model.emb_loss],
@@ -670,7 +663,7 @@ if __name__ == '__main__':
     config['n_users'] = data_generator.n_users
     config['n_items'] = data_generator.n_items
     config['eval_type'] = data_generator.eval_type
-    if args.alg_type in ['csgcn']:
+    if args.alg_type in ['csgcn-is', 'csgcn-adj']:
         config['n_contexts'] = data_generator.n_contexts
         config['n_user_sideinfo'] = data_generator.n_user_sideinfo
         config['n_item_sideinfo'] = data_generator.n_item_sideinfo
@@ -834,10 +827,9 @@ if __name__ == '__main__':
             sample_next.join()
             train_cur.join()
             
-            if model.alg_type in ['csgcn']:
-                if model.adj_type in ['csgcn']:
-                    users, pos_items, neg_items, _ = sample_last.data
-                else:
+            if model.alg_type in ['csgcn-adj']:
+                users, pos_items, neg_items, _ = sample_last.data
+            elif model.alg_type in ['csgcn-is']:
                     users, pos_items, neg_items, _, _ = sample_last.data
             else:
                 users, pos_items, neg_items = sample_last.data
@@ -908,10 +900,9 @@ if __name__ == '__main__':
             sample_next.join()
             train_cur.join()
             
-            if model.alg_type in ['csgcn']:
-                if model.adj_type in ['csgcn']:
-                    users, pos_items, neg_items, _ = sample_last.data
-                else:
+            if model.alg_type in ['csgcn-adj']:
+                users, pos_items, neg_items, _ = sample_last.data
+            elif model.alg_type in ['csgcn-is']:
                     users, pos_items, neg_items, _, _ = sample_last.data
             else:
                 users, pos_items, neg_items = sample_last.data

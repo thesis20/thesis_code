@@ -40,7 +40,7 @@ def test(sess, model, users_to_test, drop_flag=False, train_set_flag=0):
     count = 0
     all_result = []
     item_batch = range(ITEM_NUM)
-    for u_batch_id in range(n_user_batchs):
+    for u_batch_id in tqdm(range(n_user_batchs)):
         start = u_batch_id * u_batch_size
         end = (u_batch_id + 1) * u_batch_size
         
@@ -50,11 +50,11 @@ def test(sess, model, users_to_test, drop_flag=False, train_set_flag=0):
         if len(user_batch) == 0:
             continue
 
-        if model.alg_type in ['csgcn']:
+        if model.alg_type in ['csgcn-is', 'csgcn-adj']:
             rate_batch = []
-            for context_comb in tqdm(data_generator.test_context_combinations):
+            for context_comb in data_generator.test_context_combinations:
                 item_contexts = []
-                if model.adj_type in ['csgcn']:
+                if model.alg_type in ['csgcn-adj']:
                     item_contexts.append([data_generator.context_offset_dict[value] for value in context_comb])
                     if drop_flag == False:
                         rate_batch.append(sess.run(model.batch_ratings, {model.users: user_batch,
@@ -66,7 +66,7 @@ def test(sess, model, users_to_test, drop_flag=False, train_set_flag=0):
                                                                     model.contexts: item_contexts,
                                                                     model.node_dropout: [0.] * len(eval(args.layer_size)),
                                                                     model.mess_dropout: [0.] * len(eval(args.layer_size))}))
-                else:
+                elif model.alg_type in ['csgcn-is']:
                     for item in item_batch:
                         item_context = []
                         for value in context_comb:
@@ -97,7 +97,7 @@ def test(sess, model, users_to_test, drop_flag=False, train_set_flag=0):
         test_items = []
         if train_set_flag == 0:
             for user in user_batch:
-                if model.alg_type in ['csgcn']:
+                if model.alg_type in ['csgcn-is', 'csgcn-adj']:
                     test_items.append([itemId for itemId, _ in data_generator.test_set[user]])
                 else:
                     test_items.append(data_generator.test_set[user])# (B, #test_items)
@@ -105,14 +105,14 @@ def test(sess, model, users_to_test, drop_flag=False, train_set_flag=0):
             # set the ranking scores of training items to -inf,
             # then the training items will be sorted at the end of the ranking list.
             for idx, user in enumerate(user_batch):
-                if model.alg_type in ['csgcn']:
+                if model.alg_type in ['csgcn-is', 'csgcn-adj']:
                     train_items_off = [itemId for itemId, _ in data_generator.train_items[user]]
                 else:
                     train_items_off = data_generator.train_items[user]
                 rate_batch[idx][train_items_off] = -np.inf
         else:
             for user in user_batch:
-                if model.alg_type in ['csgcn']:
+                if model.alg_type in ['csgcn-is', 'csgcn-adj']:
                     test_items.append([itemId for itemId, _ in data_generator.train_items[user]])
                 else:
                     test_items.append(data_generator.train_items[user])
@@ -156,13 +156,13 @@ def test_loo(sess, model, users_to_test, drop_flag=False, train_set_flag=0):
 
         user_batch = test_users[start: end]
         
-        if model.alg_type in ['csgcn']:
+        if model.alg_type in ['csgcn-is', 'csgcn-adj']:
             rate_batch = []
             for user in user_batch:
                 test_interaction = data_generator.test_set[user][0]
                 context = test_interaction[1]
                 item_contexts = []
-                if model.adj_type in ['csgcn']:
+                if model.alg_type in ['csgcn-adj']:
                     item_context = []
                     for context_index, value in enumerate(context):
                         value = data_generator.context_column_list[context_index] + str(value)
@@ -178,7 +178,7 @@ def test_loo(sess, model, users_to_test, drop_flag=False, train_set_flag=0):
                                                                     model.contexts: item_contexts,
                                                                     model.node_dropout: [0.] * len(eval(args.layer_size)),
                                                                     model.mess_dropout: [0.] * len(eval(args.layer_size))})
-                else:           
+                elif model.alg_type in ['csgcn-is']:           
                     for item in item_batch:
                         item_context = []
                         for context_index, value in enumerate(context):
@@ -209,7 +209,7 @@ def test_loo(sess, model, users_to_test, drop_flag=False, train_set_flag=0):
         test_items = []
         if train_set_flag == 0:
             for user in user_batch:
-                if model.alg_type in ['csgcn']:
+                if model.alg_type in ['csgcn-is', 'csgcn-adj']:
                     test_items.append([itemId for itemId, _ in data_generator.test_set[user]])
                 else:
                     test_items.append(data_generator.test_set[user])# (B, #test_items)
@@ -217,14 +217,14 @@ def test_loo(sess, model, users_to_test, drop_flag=False, train_set_flag=0):
             # set the ranking scores of training items to -inf,
             # then the training items will be sorted at the end of the ranking list.
             for idx, user in enumerate(user_batch):
-                if model.alg_type in ['csgcn']:
+                if model.alg_type in ['csgcn-is', 'csgcn-adj']:
                     train_items_off = [itemId for itemId, _ in data_generator.train_items[user]]
                 else:
                     train_items_off = data_generator.train_items[user]
                 rate_batch[idx][train_items_off] = -np.inf
         else:
             for user in user_batch:
-                if model.alg_type in ['csgcn']:
+                if model.alg_type in ['csgcn-is', 'csgcn-adj']:
                     test_items.append([itemId for itemId, _ in data_generator.train_items[user]])
                 else:
                     test_items.append(data_generator.train_items[user])
