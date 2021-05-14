@@ -188,7 +188,7 @@ class CFM(BaseEstimator, TransformerMixin):
             weirdo = [-1, self.nc[-1]]
             droppout_shape = self.dropout_positive.shape
             wtf = tf.reshape(self.dropout_positive, [-1, self.nc[-1]])
-            self.interaction_positive = tf.reshape(tf.matmul(tf.reshape(self.dropout_positive, [-1, self.nc[-1]]), self.W) + self.b, [227, 1])
+            self.interaction_positive = tf.matmul(tf.reshape(self.dropout_positive, [-1, self.nc[-1]]), self.W) + self.b
             #self.interaction_positive = tf.reshape(self.interaction_positive, [227, 1])
             self.user_feature_bias = tf.reduce_sum(
                 tf.nn.embedding_lookup(self.weights['user_feature_bias'], self.user_features), 1)  # None * 1
@@ -232,7 +232,7 @@ class CFM(BaseEstimator, TransformerMixin):
                 layer_filter_index += 1
                 negative_input = self.layer[-1]
             self.dropout_negative = tf.nn.dropout(self.layer[-1], self.dropout_keep)
-            self.interaction_negative = tf.reshape(tf.matmul(tf.reshape(self.dropout_negative, [-1, self.nc[-1]]), self.W) + self.b, [227, 1])
+            self.interaction_negative = tf.matmul(tf.reshape(self.dropout_negative, [-1, self.nc[-1]]), self.W) + self.b
             #self.interaction_negative = tf.reshape(self.interaction_negative, [227, 1])
             self.item_feature_bias_negative = tf.reduce_sum(
                 tf.nn.embedding_lookup(self.weights['item_feature_bias'], self.negative_features), 1)  # None * 1
@@ -289,11 +289,9 @@ class CFM(BaseEstimator, TransformerMixin):
         :param P: weights and bias
         :return: convolution result
         '''
-        wtf = P[0]
         conv = tf.nn.conv3d(input, P[0], strides=[1, 2, 2, 2, 1],
                             padding='VALID')
-        what = tf.nn.relu(conv + P[1])  # bias_add and activate
-        return what
+        return tf.nn.relu(conv + P[1])  # bias_add and activate
     
     def _conv_layer1(self, input, P):
         '''
@@ -302,11 +300,9 @@ class CFM(BaseEstimator, TransformerMixin):
         :param P: weights and bias
         :return: convolution result
         '''
-        wtf = P[0]
         conv = tf.nn.conv3d(input, P[0], strides=[1, 1, 2, 2, 1],
                             padding='VALID')
-        what = tf.nn.relu(conv + P[1])  # bias_add and activate
-        return what
+        return tf.nn.relu(conv + P[1])  # bias_add and activate
 
     def _initialize_weights(self):
         '''
