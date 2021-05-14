@@ -172,15 +172,16 @@ class CFM(BaseEstimator, TransformerMixin):
             # 3D Convolution Layers
             self.layer = []
             positive_input = self.positive_cube
-            i=0
+            layer_filter_index=0
             for p in self.P:
                 # convolution
-                if i == 0:
+                if layer_filter_index == 0:
+                    print("positive")
                     self.layer.append(self._conv_layer1(positive_input, p))
                 else:
                     self.layer.append(self._conv_layer(positive_input, p))
                 positive_input = self.layer[-1]
-                i+= 1
+                layer_filter_index+= 1
 
             self.dropout_positive = tf.nn.dropout(self.layer[-1], self.dropout_keep)
             
@@ -221,12 +222,14 @@ class CFM(BaseEstimator, TransformerMixin):
 
             self.layer = []
             negative_input = self.negative_cube
-            i = 0
+            layer_filter_index = 0
             for p in self.P:
-                if i == 0:
+                if layer_filter_index == 0:
+                    print("negative")
                     self.layer.append(self._conv_layer1(negative_input, p))
                 else:
                     self.layer.append(self._conv_layer(negative_input, p))
+                layer_filter_index += 1
                 negative_input = self.layer[-1]
             self.dropout_negative = tf.nn.dropout(self.layer[-1], self.dropout_keep)
             self.interaction_negative = tf.reshape(tf.matmul(tf.reshape(self.dropout_negative, [-1, self.nc[-1]]), self.W) + self.b, [227, 1])
@@ -514,8 +517,8 @@ if __name__ == '__main__':
             % (args.dataset, args.hidden_factor, args.epoch, args.batch_size, args.lr, args.lamda, args.optimizer,
                args.batch_norm, args.keep_prob))
 
-    #save_file = 'model/CFM-TensorFlow/pretrain-FM-loo_%s/%s_%d' % (args.dataset, args.dataset, args.hidden_factor)
-    save_file = 'model/CFM-TensorFlow/pretrain-FM-loo_frappe/loo_frappe_64'
+    save_file = 'model/CFM-TensorFlow/pretrain-FM-%s/%s_%d' % (args.dataset, args.dataset, args.hidden_factor)
+    #save_file = 'model/CFM-TensorFlow/pretrain-FM-loo_frappe/loo_frappe_64'
 
     # CFM model
     model = CFM(data.user_field_M, data.item_field_M, args.pretrain, save_file, args.hidden_factor, args.num_field,
