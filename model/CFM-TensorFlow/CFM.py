@@ -185,9 +185,7 @@ class CFM(BaseEstimator, TransformerMixin):
 
             self.dropout_positive = tf.nn.dropout(self.layer[-1], self.dropout_keep)
             
-            weirdo = [-1, self.nc[-1]]
-            droppout_shape = self.dropout_positive.shape
-            wtf = tf.reshape(self.dropout_positive, [-1, self.nc[-1]])
+           
             self.interaction_positive = tf.matmul(tf.reshape(self.dropout_positive, [-1, self.nc[-1]]), self.W) + self.b
             #self.interaction_positive = tf.reshape(self.interaction_positive, [227, 1])
             self.user_feature_bias = tf.reduce_sum(
