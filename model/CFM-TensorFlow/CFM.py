@@ -114,14 +114,11 @@ class CFM(BaseEstimator, TransformerMixin):
             iszs = [1] + self.nc[:-1]
             oszs = self.nc
             self.P = []
-            #self.P.append(self._conv_weight(5, iszs[0], oszs[0])) # First layer
-            #for i in range(1, 6):
-             #   self.P.append(self._conv_weight(2, iszs[i], oszs[i]))  # last layers
-            self.P.append(self._conv_weight(5, iszs[0], oszs[0]))
+            self.P.append(self._conv_weight(5, iszs[0], oszs[0])) # First layer
             for i in range(1, 5):
-                self.P.append(self._conv_weight(2, iszs[i], oszs[i]))  # first 5 layers
-            self.P.append(self._conv_weight(1, iszs[5], oszs[5]))
-            self.W = self.weight_variable([self.nc[-1], 1])  # last layer
+                self.P.append(self._conv_weight(2, iszs[i], oszs[i]))  # Layers 2-5
+            self.P.append(self._conv_weight(1, iszs[5], oszs[5])) # last layer
+            self.W = self.weight_variable([self.nc[-1], 1])  
             self.b = self.weight_variable([1])
 
             ##################### CFM Model. #####################
@@ -176,7 +173,6 @@ class CFM(BaseEstimator, TransformerMixin):
             for p in self.P:
                 # convolution
                 if layer_filter_index == 0:
-                    print("positive")
                     self.layer.append(self._conv_layer1(positive_input, p))
                 else:
                     self.layer.append(self._conv_layer(positive_input, p))
@@ -187,7 +183,6 @@ class CFM(BaseEstimator, TransformerMixin):
             
            
             self.interaction_positive = tf.matmul(tf.reshape(self.dropout_positive, [-1, self.nc[-1]]), self.W) + self.b
-            #self.interaction_positive = tf.reshape(self.interaction_positive, [227, 1])
             self.user_feature_bias = tf.reduce_sum(
                 tf.nn.embedding_lookup(self.weights['user_feature_bias'], self.user_features), 1)  # None * 1
             self.item_feature_bias_positive = tf.reduce_sum(
@@ -223,7 +218,6 @@ class CFM(BaseEstimator, TransformerMixin):
             layer_filter_index = 0
             for p in self.P:
                 if layer_filter_index == 0:
-                    print("negative")
                     self.layer.append(self._conv_layer1(negative_input, p))
                 else:
                     self.layer.append(self._conv_layer(negative_input, p))
@@ -231,7 +225,6 @@ class CFM(BaseEstimator, TransformerMixin):
                 negative_input = self.layer[-1]
             self.dropout_negative = tf.nn.dropout(self.layer[-1], self.dropout_keep)
             self.interaction_negative = tf.matmul(tf.reshape(self.dropout_negative, [-1, self.nc[-1]]), self.W) + self.b
-            #self.interaction_negative = tf.reshape(self.interaction_negative, [227, 1])
             self.item_feature_bias_negative = tf.reduce_sum(
                 tf.nn.embedding_lookup(self.weights['item_feature_bias'], self.negative_features), 1)  # None * 1
             self.negative = tf.add_n(
