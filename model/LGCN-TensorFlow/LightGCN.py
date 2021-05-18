@@ -210,9 +210,14 @@ class LightGCN(object):
             ic_interactions_sum = tf.reduce_sum(ic_interactions, axis=[0,2])
             ic_interactions_sum = tf.expand_dims(ic_interactions_sum, axis=0)
             self.batch_ratings = uc_interactions_sum + ui_interactions + ic_interactions_sum
+            
         elif self.alg_type in ['csgcn-is']:
-            self.pos_i_g_c_embeddings = tf.add(self.pos_item_context_pre, self.pos_i_g_embeddings)
-            self.batch_ratings = tf.matmul(self.u_g_embeddings, self.pos_i_g_c_embeddings, transpose_a=False, transpose_b=True)
+            context_split = tf.unstack(self.pos_item_context_pre, axis=1)
+            pos_i_g_c_embeddings = tf.map_fn(lambda x : tf.add(x, self.pos_i_g_embeddings), tf.stack(context_split))
+            
+            pos_uic_interactions = tf.map_fn(lambda x : tf.matmul(self.u_g_embeddings, x, transpose_a=False, transpose_b=True), pos_i_g_c_embeddings)
+            self.batch_ratings = tf.reduce_sum(pos_uic_interactions, axis=0)
+            
         else:
             self.batch_ratings = tf.matmul(self.u_g_embeddings, self.pos_i_g_embeddings, transpose_a=False, transpose_b=True)
 
@@ -517,10 +522,18 @@ class LightGCN(object):
                         self.pos_i_g_embeddings_pre) + tf.nn.l2_loss(self.neg_i_g_embeddings_pre) \
                         + tf.nn.l2_loss(self.context_embeddings)
         elif self.alg_type in ['csgcn-is']:
-            pos_items = tf.add(pos_items, self.pos_item_context_pre)
-            neg_items = tf.add(neg_items, self.neg_item_context_pre)
-            pos_scores = tf.reduce_sum(tf.multiply(users, pos_items), axis=1)
-            neg_scores = tf.reduce_sum(tf.multiply(users, neg_items), axis=1)
+            
+            pos_context_split = tf.unstack(self.pos_item_context_pre, axis=1)
+            pos_context_stack = tf.stack(pos_context_split) # unstack on axis1 and stack on axis0 so shape is correct
+            neg_context_split = tf.unstack(self.neg_item_context_pre, axis=1)
+            neg_context_stack = tf.stack(neg_context_split) # unstack on axis1 and stack on axis0 so shape is correct
+            pos_ics = tf.map_fn(lambda x : tf.add(x, pos_items), pos_context_stack)
+            neg_ics = tf.map_fn(lambda x : tf.add(x, neg_items), neg_context_stack)
+            pos_ui_muls = tf.map_fn(lambda x : tf.multiply(users, x), pos_ics)
+            neg_ui_muls = tf.map_fn(lambda x : tf.multiply(users, x), neg_ics)
+            pos_scores = tf.reduce_sum(pos_ui_muls, axis=[0,2])
+            neg_scores = tf.reduce_sum(neg_ui_muls, axis=[0,2])
+            
             regularizer = tf.nn.l2_loss(self.u_g_embeddings_pre) + tf.nn.l2_loss(
                         self.pos_i_g_embeddings_pre) + tf.nn.l2_loss(self.neg_i_g_embeddings_pre) \
                         + tf.nn.l2_loss(self.pos_item_context_pre) + tf.nn.l2_loss(self.neg_item_context_pre)
