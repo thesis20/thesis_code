@@ -20,7 +20,6 @@ class Data(object):
         self.loo_eval = False
         self.alg_type = alg_type
         self.eval_type = eval_type
-        rd.seed(2021)
 
         if 'ml100k' in self.path:
             self.user_column_name = 'userId'
@@ -407,10 +406,12 @@ class Data(object):
                         context_offset = self.n_users + self.n_items + self.n_user_sideinfo + self.n_item_sideinfo + context_index
                         adj_mat[userId, context_offset] = 1 # UC
                         adj_mat[item_offset, context_offset] = 1 # IC
+                        # adj_mat[context_offset, userId] = 1 # UCT
+                        # adj_mat[context_offset, item_offset] = 1 # ICT
                     # 2I to counter normalization term
                     for i in range(self.n_contexts):
                         offset = self.n_users + self.n_items + self.n_user_sideinfo + self.n_item_sideinfo
-                        adj_mat[i + offset,i + offset] = 2
+                        adj_mat[i + offset,i + offset] = 1
 
             return adj_mat
 

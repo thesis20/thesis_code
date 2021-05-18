@@ -17,6 +17,8 @@ from utility.helper import *
 from utility.batch_test import *
 os.environ['TF_CPP_MIN_LOG_LEVEL']='2'
 
+step_size = 20
+
 cpus = [x.name for x in device_lib.list_local_devices() if x.device_type == 'CPU']
 
 class LightGCN(object):
@@ -67,7 +69,7 @@ class LightGCN(object):
                 self.pos_items_context = tf.placeholder(tf.int32, shape=(None, None))
                 self.neg_items_context = tf.placeholder(tf.int32, shape=(None, None))
         
-        self.node_dropout_flag = args.node_dropout_flag
+        self.node_dropout_flag = bool(args.node_dropout_flag)
         self.node_dropout = tf.placeholder(tf.float32, shape=[None])
         self.mess_dropout = tf.placeholder(tf.float32, shape=[None])
         with tf.name_scope('TRAIN_LOSS'):
@@ -291,7 +293,9 @@ class LightGCN(object):
                 initializer([1, self.weight_size_list[k+1]]), name='b_mlp_%d' % k)
 
         return all_weights
+
     def _split_A_hat(self, X):
+        print("No dropout")
         A_fold_hat = []
 
         if self.alg_type in ['csgcn-adj']:
@@ -350,7 +354,6 @@ class LightGCN(object):
         all_embeddings = [ego_embeddings]
 
         for k in range(0, self.n_layers):
-
             temp_embed = []
             for f in range(self.n_fold):
                 temp_embed.append(tf.sparse_tensor_dense_matmul(A_fold_hat[f], ego_embeddings))
@@ -506,8 +509,8 @@ class LightGCN(object):
             ic_pos = tf.multiply(pos_items, context, name='ic_pos_mul')
             ui_neg = tf.multiply(users, neg_items, name='ui_neg_mul')
             ic_neg = tf.multiply(neg_items, context, name='ic_neg_mul')
-            pos_scores = 0.5 * tf.reduce_sum((uc+ui_pos+ic_pos), axis=1)
-            neg_scores = 0.5 * tf.reduce_sum((uc+ui_neg+ic_neg), axis=1)
+            pos_scores = tf.reduce_sum((uc+ui_pos+ic_pos), axis=1)
+            neg_scores = tf.reduce_sum((uc+ui_neg+ic_neg), axis=1)
             regularizer = tf.nn.l2_loss(self.u_g_embeddings_pre) + tf.nn.l2_loss(
                         self.pos_i_g_embeddings_pre) + tf.nn.l2_loss(self.neg_i_g_embeddings_pre) \
                         + tf.nn.l2_loss(self.context_embeddings)
@@ -849,39 +852,39 @@ if __name__ == '__main__':
             print('ERROR: loss is nan.')
             sys.exit()
         
-        if (epoch % 20) != 0:
+        if (epoch % step_size) != 0:
             if args.verbose > 0 and epoch % args.verbose == 0:
                 perf_str = 'Epoch %d [%.1fs]: train==[%.5f=%.5f + %.5f]' % (
                     epoch, time() - t1, loss, mf_loss, emb_loss)
                 print(perf_str)
             continue
-        users_to_test = list(data_generator.train_items.keys())
-        if data_generator.eval_type == 'foldout':
-            ret = test(sess, model, users_to_test ,drop_flag=True,train_set_flag=1)
-            perf_str = 'Epoch %d: train==[%.5f=%.5f + %.5f + %.5f], recall=[%s], precision=[%s], ndcg=[%s]' % \
-                    (epoch, loss, mf_loss, emb_loss, reg_loss, 
-                        ', '.join(['%.5f' % r for r in ret['recall']]),
-                        ', '.join(['%.5f' % r for r in ret['precision']]),
-                        ', '.join(['%.5f' % r for r in ret['ndcg']]))
-            print(perf_str)
-            summary_train_acc = sess.run(model.merged_train_acc, feed_dict={model.train_rec_first: ret['recall'][0],
-                                                                            model.train_rec_last: ret['recall'][-1],
-                                                                            model.train_ndcg_first: ret['ndcg'][0],
-                                                                            model.train_ndcg_last: ret['ndcg'][-1],
-                                                                            model.train_precision_first: ret['precision'][0],
-                                                                            model.train_precision_last: ret['precision'][-1]})
-        elif data_generator.eval_type == 'loo':
-            ret = test_loo(sess, model, users_to_test ,drop_flag=True,train_set_flag=1)
-            perf_str = 'Epoch %d: train==[%.5f=%.5f + %.5f + %.5f], hitrate=[%s], mrr=[%s]' % \
-                    (epoch, loss, mf_loss, emb_loss, reg_loss, 
-                        ', '.join(['%.5f' % r for r in ret['hitrate']]),
-                        ', '.join(['%.5f' % r for r in ret['mrr']]))
-            print(perf_str)
-            summary_train_acc = sess.run(model.merged_train_acc, feed_dict={model.train_hitrate_first: ret['hitrate'][0],
-                                                                            model.train_hitrate_last: ret['hitrate'][-1],
-                                                                            model.train_mrr_first: ret['mrr'][0],
-                                                                            model.train_mrr_last: ret['mrr'][-1],})
-        train_writer.add_summary(summary_train_acc, epoch // 20)
+        # users_to_test = list(data_generator.train_items.keys())
+        # if data_generator.eval_type == 'foldout':
+        #     ret = test(sess, model, users_to_test ,drop_flag=True,train_set_flag=1)
+        #     perf_str = 'Epoch %d: train==[%.5f=%.5f + %.5f + %.5f], recall=[%s], precision=[%s], ndcg=[%s]' % \
+        #             (epoch, loss, mf_loss, emb_loss, reg_loss, 
+        #                 ', '.join(['%.5f' % r for r in ret['recall']]),
+        #                 ', '.join(['%.5f' % r for r in ret['precision']]),
+        #                 ', '.join(['%.5f' % r for r in ret['ndcg']]))
+        #     print(perf_str)
+        #     summary_train_acc = sess.run(model.merged_train_acc, feed_dict={model.train_rec_first: ret['recall'][0],
+        #                                                                     model.train_rec_last: ret['recall'][-1],
+        #                                                                     model.train_ndcg_first: ret['ndcg'][0],
+        #                                                                     model.train_ndcg_last: ret['ndcg'][-1],
+        #                                                                     model.train_precision_first: ret['precision'][0],
+        #                                                                     model.train_precision_last: ret['precision'][-1]})
+        # elif data_generator.eval_type == 'loo':
+        #     ret = test_loo(sess, model, users_to_test ,drop_flag=True,train_set_flag=1)
+        #     perf_str = 'Epoch %d: train==[%.5f=%.5f + %.5f + %.5f], hitrate=[%s], mrr=[%s]' % \
+        #             (epoch, loss, mf_loss, emb_loss, reg_loss, 
+        #                 ', '.join(['%.5f' % r for r in ret['hitrate']]),
+        #                 ', '.join(['%.5f' % r for r in ret['mrr']]))
+        #     print(perf_str)
+        #     summary_train_acc = sess.run(model.merged_train_acc, feed_dict={model.train_hitrate_first: ret['hitrate'][0],
+        #                                                                     model.train_hitrate_last: ret['hitrate'][-1],
+        #                                                                     model.train_mrr_first: ret['mrr'][0],
+        #                                                                     model.train_mrr_last: ret['mrr'][-1],})
+        # train_writer.add_summary(summary_train_acc, epoch // 20)
         
         '''
         *********************************************************
@@ -916,7 +919,7 @@ if __name__ == '__main__':
         summary_test_loss = sess.run(model.merged_test_loss,
                                      feed_dict={model.test_loss: loss_test, model.test_mf_loss: mf_loss_test,
                                                 model.test_emb_loss: emb_loss_test, model.test_reg_loss: reg_loss_test})
-        train_writer.add_summary(summary_test_loss, epoch // 20)
+        train_writer.add_summary(summary_test_loss, epoch // step_size)
         t2 = time()
         users_to_test = list(data_generator.test_items.keys())
         if data_generator.eval_type == 'foldout':
@@ -931,7 +934,7 @@ if __name__ == '__main__':
                                         feed_dict={model.test_hitrate_first: ret['hitrate'][0], model.test_hitrate_last: ret['hitrate'][-1],
                                                 model.test_mrr_first: ret['mrr'][0], model.test_mrr_last: ret['mrr'][-1]})
         
-        train_writer.add_summary(summary_test_acc, epoch // 20)
+        train_writer.add_summary(summary_test_acc, epoch // step_size)
                                                                                                  
                                                                                                  
         t3 = time()
