@@ -22,15 +22,15 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 #################### Arguments ####################
 def parse_args():
     parser = argparse.ArgumentParser(description="Run CFM.")
-    parser.add_argument('--path', nargs='?', default='Data/',
+    parser.add_argument('--path', nargs='?', default='model/CFM-TensorFlow/Data/',
                         help='Input data path.')
-    parser.add_argument('--dataset', nargs='?', default='frappe',
+    parser.add_argument('--dataset', nargs='?', default='yelpnc',
                         help='Choose a dataset. frappe, lastfm, movielens')
     parser.add_argument('--epoch', type=int, default=300,
                         help='Number of epochs.')
     parser.add_argument('--pretrain', type=int, default=1,
                         help='flag for pretrain. 1: initialize from pretrain; 0: randomly initialize; -1: save the model to pretrain file')
-    parser.add_argument('--batch_size', type=int, default=256,
+    parser.add_argument('--batch_size', type=int, default=227,
                         help='Batch size.')
     parser.add_argument('--hidden_factor', type=int, default=64,
                         help='Number of hidden factors, i.e., embedding size.')
@@ -56,7 +56,7 @@ def parse_args():
                         help='dimension of attention_size')
     parser.add_argument('--attentive_pooling', type=bool, default=False,
                         help='the flag of attentive_pooling')
-    parser.add_argument('--num_field', type=int, default=5,
+    parser.add_argument('--num_field', type=int, default=9,
                         help='number of fields')
 
     return parser.parse_args()
@@ -114,10 +114,11 @@ class CFM(BaseEstimator, TransformerMixin):
             iszs = [1] + self.nc[:-1]
             oszs = self.nc
             self.P = []
-            for i in range(5):
-                self.P.append(self._conv_weight(2, iszs[i], oszs[i]))  # first 5 layers
-            self.P.append(self._conv_weight(1, iszs[5], oszs[5]))
-            self.W = self.weight_variable([self.nc[-1], 1])  # last layer
+            self.P.append(self._conv_weight(5, iszs[0], oszs[0])) # First layer
+            for i in range(1, 5):
+                self.P.append(self._conv_weight(2, iszs[i], oszs[i]))  # Layers 2-5
+            self.P.append(self._conv_weight(1, iszs[5], oszs[5])) # last layer
+            self.W = self.weight_variable([self.nc[-1], 1])  
             self.b = self.weight_variable([1])
 
             ##################### CFM Model. #####################
@@ -168,16 +169,25 @@ class CFM(BaseEstimator, TransformerMixin):
             # 3D Convolution Layers
             self.layer = []
             positive_input = self.positive_cube
+            layer_filter_index=0
             for p in self.P:
                 # convolution
-                self.layer.append(self._conv_layer(positive_input, p))
+                if layer_filter_index == 0:
+                    self.layer.append(self._conv_layer1(positive_input, p))
+                else:
+                    self.layer.append(self._conv_layer(positive_input, p))
                 positive_input = self.layer[-1]
+                layer_filter_index+= 1
+
             self.dropout_positive = tf.nn.dropout(self.layer[-1], self.dropout_keep)
+            
+           
             self.interaction_positive = tf.matmul(tf.reshape(self.dropout_positive, [-1, self.nc[-1]]), self.W) + self.b
             self.user_feature_bias = tf.reduce_sum(
                 tf.nn.embedding_lookup(self.weights['user_feature_bias'], self.user_features), 1)  # None * 1
             self.item_feature_bias_positive = tf.reduce_sum(
                 tf.nn.embedding_lookup(self.weights['item_feature_bias'], self.positive_features), 1)  # None * 1
+
             self.positive = tf.add_n(
                 [self.interaction_positive, self.user_feature_bias, self.item_feature_bias_positive])  # None * 1
 
@@ -205,8 +215,13 @@ class CFM(BaseEstimator, TransformerMixin):
 
             self.layer = []
             negative_input = self.negative_cube
+            layer_filter_index = 0
             for p in self.P:
-                self.layer.append(self._conv_layer(negative_input, p))
+                if layer_filter_index == 0:
+                    self.layer.append(self._conv_layer1(negative_input, p))
+                else:
+                    self.layer.append(self._conv_layer(negative_input, p))
+                layer_filter_index += 1
                 negative_input = self.layer[-1]
             self.dropout_negative = tf.nn.dropout(self.layer[-1], self.dropout_keep)
             self.interaction_negative = tf.matmul(tf.reshape(self.dropout_negative, [-1, self.nc[-1]]), self.W) + self.b
@@ -259,6 +274,17 @@ class CFM(BaseEstimator, TransformerMixin):
         return (self.weight_variable([deep, 2, 2, isz, osz]), self.bias_variable([osz]))
 
     def _conv_layer(self, input, P):
+        '''
+        Convolution layer of 3D CNN
+        :param input:
+        :param P: weights and bias
+        :return: convolution result
+        '''
+        conv = tf.nn.conv3d(input, P[0], strides=[1, 2, 2, 2, 1],
+                            padding='VALID')
+        return tf.nn.relu(conv + P[1])  # bias_add and activate
+    
+    def _conv_layer1(self, input, P):
         '''
         Convolution layer of 3D CNN
         :param input:
@@ -379,9 +405,9 @@ class CFM(BaseEstimator, TransformerMixin):
         :return:
         '''
         self.graph.finalize()
-        count = [0, 0, 0, 0]
-        rank = [[], [], [], []]
-        topK = [5, 10, 15, 20]
+        count = [0, 0]
+        rank = [[], []]
+        topK = [20, 50]
         for index in range(len(data.Test_data['X_user'])):
             user_features = data.Test_data['X_user'][index]
             item_features = data.Test_data['X_item'][index]
@@ -478,7 +504,8 @@ if __name__ == '__main__':
             % (args.dataset, args.hidden_factor, args.epoch, args.batch_size, args.lr, args.lamda, args.optimizer,
                args.batch_norm, args.keep_prob))
 
-    save_file = 'pretrain-FM-%s/%s_%d' % (args.dataset, args.dataset, args.hidden_factor)
+    save_file = 'model/CFM-TensorFlow/pretrain-FM-%s/%s_%d' % (args.dataset, args.dataset, args.hidden_factor)
+    #save_file = 'model/CFM-TensorFlow/pretrain-FM-loo_frappe/loo_frappe_64'
 
     # CFM model
     model = CFM(data.user_field_M, data.item_field_M, args.pretrain, save_file, args.hidden_factor, args.num_field,
