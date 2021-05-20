@@ -36,6 +36,7 @@ class LightGCN(object):
             self.n_contexts = data_config['n_contexts']
             self.n_user_sideinfo = data_config['n_user_sideinfo']
             self.n_item_sideinfo = data_config['n_item_sideinfo']
+            self.n_context_dims = data_config['n_context_dims']
         self.n_fold = 100
         self.norm_adj = data_config['norm_adj']
         self.n_nonzero_elems = self.norm_adj.count_nonzero()
@@ -64,10 +65,10 @@ class LightGCN(object):
             self.user_sideinfo = tf.placeholder(tf.int32, shape=(None, None))
             self.item_sideinfo = tf.placeholder(tf.int32, shape=(None, None))
             if self.alg_type in ['csgcn-adj']:
-                self.contexts = tf.placeholder(tf.int32, shape=(None,None))
+                self.contexts = tf.placeholder(tf.int32, shape=(None, self.n_context_dims))
             else:
-                self.pos_items_context = tf.placeholder(tf.int32, shape=(None, None))
-                self.neg_items_context = tf.placeholder(tf.int32, shape=(None, None))
+                self.pos_items_context = tf.placeholder(tf.int32, shape=(None, self.n_context_dims))
+                self.neg_items_context = tf.placeholder(tf.int32, shape=(None, self.n_context_dims))
         
         self.node_dropout_flag = bool(args.node_dropout_flag)
         self.node_dropout = tf.placeholder(tf.float32, shape=[None])
@@ -192,26 +193,31 @@ class LightGCN(object):
             self.item_sideinfo_embeddings = tf.nn.embedding_lookup(self.weights['item_sideinfo_embedding'], self.item_sideinfo)
         if self.alg_type in ['csgcn-adj']:
             self.context_embeddings = tf.nn.embedding_lookup(self.weights['context_embedding'], self.contexts)
-            self.context_embeddings = tf.reduce_mean(self.context_embeddings, axis=1)
         if self.alg_type in ['csgcn-is']:
             self.pos_item_context_pre = tf.nn.embedding_lookup(self.weights['item_context_embedding'], self.pos_items_context)
             self.neg_item_context_pre = tf.nn.embedding_lookup(self.weights['item_context_embedding'], self.neg_items_context)
-            self.pos_item_context_pre = tf.reduce_mean(self.pos_item_context_pre, axis=1)
-            self.neg_item_context_pre = tf.reduce_mean(self.neg_item_context_pre, axis=1)
 
         """
         *********************************************************
         Inference for the testing phase.
         """
         if self.alg_type in ['csgcn-adj']:
-            uc = tf.matmul(self.u_g_embeddings, self.context_embeddings, transpose_a=False, transpose_b=True, name='uc')
-            ui_pos = tf.matmul(self.u_g_embeddings, self.pos_i_g_embeddings, transpose_a=False, transpose_b=True, name='ui')
-            ic_pos = tf.multiply(self.pos_i_g_embeddings, self.context_embeddings, name='ic')
-            ic_pos_sum = tf.reduce_sum(ic_pos, axis=1)
-            self.batch_ratings = uc + ui_pos + ic_pos_sum
+            context_split = tf.unstack(self.context_embeddings, axis=1)
+            uc_interactions = tf.map_fn(lambda x : tf.matmul(self.u_g_embeddings, x, transpose_b=True, name='uc'), tf.stack(context_split))
+            uc_interactions_sum = tf.reduce_sum(uc_interactions, axis=[0])
+            ui_interactions = tf.matmul(self.u_g_embeddings, self.pos_i_g_embeddings, transpose_a=False, transpose_b=True, name='ui')
+            ic_interactions = tf.map_fn(lambda x : tf.matmul(self.pos_i_g_embeddings, x, transpose_b=True, name='ic'), tf.stack(context_split))
+            ic_interactions_sum = tf.reduce_sum(ic_interactions, axis=[0,2])
+            ic_interactions_sum = tf.expand_dims(ic_interactions_sum, axis=0)
+            self.batch_ratings = uc_interactions_sum + ui_interactions + ic_interactions_sum
+            
         elif self.alg_type in ['csgcn-is']:
-            self.pos_i_g_c_embeddings = tf.add(self.pos_item_context_pre, self.pos_i_g_embeddings)
-            self.batch_ratings = tf.matmul(self.u_g_embeddings, self.pos_i_g_c_embeddings, transpose_a=False, transpose_b=True)
+            context_split = tf.unstack(self.pos_item_context_pre, axis=1)
+            pos_i_g_c_embeddings = tf.map_fn(lambda x : tf.add(x, self.pos_i_g_embeddings), tf.stack(context_split))
+            
+            pos_uic_interactions = tf.map_fn(lambda x : tf.matmul(self.u_g_embeddings, x, transpose_a=False, transpose_b=True), pos_i_g_c_embeddings)
+            self.batch_ratings = tf.reduce_sum(pos_uic_interactions, axis=0)
+            
         else:
             self.batch_ratings = tf.matmul(self.u_g_embeddings, self.pos_i_g_embeddings, transpose_a=False, transpose_b=True)
 
@@ -504,21 +510,30 @@ class LightGCN(object):
 
     def create_bpr_loss_csgcn(self, users, pos_items, neg_items, context):
         if self.alg_type in ['csgcn-adj']:
-            uc = tf.multiply(users, context, name='uc_mul')
-            ui_pos = tf.multiply(users, pos_items, name='ui_pos_mul')
-            ic_pos = tf.multiply(pos_items, context, name='ic_pos_mul')
-            ui_neg = tf.multiply(users, neg_items, name='ui_neg_mul')
-            ic_neg = tf.multiply(neg_items, context, name='ic_neg_mul')
-            pos_scores = tf.reduce_sum((uc+ui_pos+ic_pos), axis=1)
-            neg_scores = tf.reduce_sum((uc+ui_neg+ic_neg), axis=1)
+            context_split = tf.unstack(context, axis=1)
+            uc_interactions = tf.reduce_sum(tf.map_fn(lambda x: tf.multiply(users, x, name='uc_mul'), tf.stack(context_split)), axis=0)
+            ui_pos_interactions = tf.multiply(users, pos_items, name='ui_pos_mul')
+            ic_pos_interactions = tf.reduce_sum(tf.map_fn(lambda x: tf.multiply(pos_items, x, name='ic_pos_mul'), tf.stack(context_split)), axis=0)
+            ui_neg_interactions = tf.multiply(users, neg_items, name='ui_neg_mul')
+            ic_neg_interactions = tf.reduce_sum(tf.map_fn(lambda x: tf.multiply(neg_items, x, name='ic_neg_mul'), tf.stack(context_split)), axis=0)
+            pos_scores = tf.reduce_sum((uc_interactions + ui_pos_interactions + ic_pos_interactions), axis=1)
+            neg_scores = tf.reduce_sum((uc_interactions + ui_neg_interactions + ic_neg_interactions), axis=1)
             regularizer = tf.nn.l2_loss(self.u_g_embeddings_pre) + tf.nn.l2_loss(
                         self.pos_i_g_embeddings_pre) + tf.nn.l2_loss(self.neg_i_g_embeddings_pre) \
                         + tf.nn.l2_loss(self.context_embeddings)
         elif self.alg_type in ['csgcn-is']:
-            pos_items = tf.add(pos_items, self.pos_item_context_pre)
-            neg_items = tf.add(neg_items, self.neg_item_context_pre)
-            pos_scores = tf.reduce_sum(tf.multiply(users, pos_items), axis=1)
-            neg_scores = tf.reduce_sum(tf.multiply(users, neg_items), axis=1)
+            
+            pos_context_split = tf.unstack(self.pos_item_context_pre, axis=1)
+            pos_context_stack = tf.stack(pos_context_split) # unstack on axis1 and stack on axis0 so shape is correct
+            neg_context_split = tf.unstack(self.neg_item_context_pre, axis=1)
+            neg_context_stack = tf.stack(neg_context_split) # unstack on axis1 and stack on axis0 so shape is correct
+            pos_ics = tf.map_fn(lambda x : tf.add(x, pos_items), pos_context_stack)
+            neg_ics = tf.map_fn(lambda x : tf.add(x, neg_items), neg_context_stack)
+            pos_ui_muls = tf.map_fn(lambda x : tf.multiply(users, x), pos_ics)
+            neg_ui_muls = tf.map_fn(lambda x : tf.multiply(users, x), neg_ics)
+            pos_scores = tf.reduce_sum(pos_ui_muls, axis=[0,2])
+            neg_scores = tf.reduce_sum(neg_ui_muls, axis=[0,2])
+            
             regularizer = tf.nn.l2_loss(self.u_g_embeddings_pre) + tf.nn.l2_loss(
                         self.pos_i_g_embeddings_pre) + tf.nn.l2_loss(self.neg_i_g_embeddings_pre) \
                         + tf.nn.l2_loss(self.pos_item_context_pre) + tf.nn.l2_loss(self.neg_item_context_pre)
@@ -670,6 +685,7 @@ if __name__ == '__main__':
         config['n_contexts'] = data_generator.n_contexts
         config['n_user_sideinfo'] = data_generator.n_user_sideinfo
         config['n_item_sideinfo'] = data_generator.n_item_sideinfo
+        config['n_context_dims'] = len(data_generator.context_column_list)
 
     """
     *********************************************************
