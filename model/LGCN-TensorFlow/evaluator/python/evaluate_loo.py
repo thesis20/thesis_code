@@ -63,8 +63,12 @@ def eval_score_matrix_loo(score_matrix, test_items, top_k=50, thread_num=None):
     def _eval_one_user(idx):
         scores = score_matrix[idx]  # all scores of the test user
         test_item = test_items[idx]  # all test items of the test user
-
-        ranking = argmax_top_k(scores, top_k)  # Top-K items
+        subsample_items = subsample(scores, 100, test_item)
+        subsample_items.append(test_item[0])
+        scores = [scores[i] for i in subsample_items]
+          
+        ranking_indexes = argmax_top_k(scores, top_k)  # Top-K items
+        ranking = [subsample_items[i] for i in ranking_indexes]
         result = []
         result.extend(hit(ranking, test_item))
         #result.extend(ndcg(ranking, test_item))
@@ -78,3 +82,11 @@ def eval_score_matrix_loo(score_matrix, test_items, top_k=50, thread_num=None):
 
     result = list(batch_result)  # generator to list
     return np.array(result)  # list to ndarray
+
+def subsample(item_list, num, test_item):
+    items = []
+    try:
+        items = np.random.sample(range(len(item_list)), num)
+    except ValueError:
+        print('Sample size exceeded range size')
+    return items
