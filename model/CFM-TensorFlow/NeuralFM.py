@@ -322,9 +322,11 @@ class FM(BaseEstimator, TransformerMixin):
             if user_id < data.user_bind_train_M:
                 visited = data.user_positive_list[user_id]  # get positive list for the userID
                 scores = np.delete(scores, visited)
+
+                subsample = scores[np.random.choice(len(scores), size = 100, replace = False)]
                 # whether hit
-                sorted_scores = sorted(scores, reverse=True)
-                sorted_scores.index(true_item_score)
+                subsample.append(true_item_score)
+                sorted_scores = sorted(subsample, reverse=True)
 
                 label = []
                 for i in range(len(topK)):

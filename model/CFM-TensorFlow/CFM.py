@@ -393,7 +393,7 @@ class CFM(BaseEstimator, TransformerMixin):
                 loss = self.partial_fit(batch_xs)
                 total_loss = total_loss + loss
             logger.info("the total loss in %d th iteration is: %f" % (epoch, total_loss))
-            if (epoch + 1) % 10 == 0:
+            if (epoch + 1) % 1 == 0:
                 model.evaluate()
         if self.pretrain_flag < 0:
             print("Save model to file as pretrain.")
@@ -417,17 +417,21 @@ class CFM(BaseEstimator, TransformerMixin):
             true_item_score = scores[true_item_id]
             # delete visited scores
             user_id = data.binded_users["-".join([str(item) for item in user_features[0:]])]  # get userID
-            visited = data.user_positive_list[user_id]  # get positive list for the userID
-            scores = np.delete(scores, visited)
-            # whether hit
-            sorted_scores = sorted(scores, reverse=True)
 
-            label = []
-            for i in range(len(topK)):
-                label.append(sorted_scores[topK[i] - 1])
-                if true_item_score >= label[i]:
-                    count[i] = count[i] + 1
-                    rank[i].append(sorted_scores.index(true_item_score) + 1)
+            if user_id < data.user_bind_train_M:
+                visited = data.user_positive_list[user_id]  # get positive list for the userID
+                scores = np.delete(scores, visited)
+                subsample = scores[np.random.choice(len(scores), size = 100, replace = False)]
+                # whether hit
+                subsample.append(true_item_score)
+                sorted_scores = sorted(subsample, reverse=True)
+
+                label = []
+                for i in range(len(topK)):
+                    label.append(sorted_scores[topK[i] - 1])
+                    if true_item_score >= label[i]:
+                        count[i] = count[i] + 1
+                        rank[i].append(sorted_scores.index(true_item_score) + 1)
 
         for i in range(len(topK)):
             mrr = 0
@@ -438,7 +442,7 @@ class CFM(BaseEstimator, TransformerMixin):
                 ndcg = ndcg + float(1.0) / np.log2(item + 1)
             mrr = mrr / len(data.Test_data['X_user'])
             ndcg = ndcg / len(data.Test_data['X_user'])
-            k = (i + 1) * 5
+            k = topK[i]
             logger.info("top:%f" % k)
             logger.info("the Hit Rate is: %f" % hit_rate)
             logger.info("the MRR is: %f" % mrr)

@@ -22,7 +22,7 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 #################### Arguments ####################
 def parse_args():
     parser = argparse.ArgumentParser(description="Run FM.")
-    parser.add_argument('--path', nargs='?', default='Data/',
+    parser.add_argument('--path', nargs='?', default='model/CFM-TensorFlow/Data/',
                         help='Input data path.')
     parser.add_argument('--topk', nargs='?', default=20,
                         help='Topk recommendation list')
@@ -277,7 +277,7 @@ class FM(BaseEstimator, TransformerMixin):
             #     print("converge!")
             #     break;
             # model.evaluate()
-            if (epoch + 1) % 10 == 0:
+            if (epoch + 1) % 50 == 0:
                 model.evaluate()
         print("end train begin save")
         if self.pretrain_flag < 0:
@@ -303,9 +303,11 @@ class FM(BaseEstimator, TransformerMixin):
             if user_id < data.user_bind_train_M:
                 visited = data.user_positive_list[user_id]  # get positive list for the userID
                 scores = np.delete(scores, visited)
+                subsample = scores[np.random.choice(len(scores), size = 100, replace = False)]
                 # whether hit
-                sorted_scores = sorted(scores, reverse=True)
-                sorted_scores.index(true_item_score)
+                subsample.append(true_item_score)
+                sorted_scores = sorted(subsample, reverse=True)
+
 
                 label = []
                 for i in range(len(topK)):
