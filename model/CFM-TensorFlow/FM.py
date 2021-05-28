@@ -277,7 +277,7 @@ class FM(BaseEstimator, TransformerMixin):
             #     print("converge!")
             #     break;
             # model.evaluate()
-            if (epoch + 1) % 50 == 0:
+            if (epoch + 1) % 1 == 0:
                 model.evaluate()
         print("end train begin save")
         if self.pretrain_flag < 0:
@@ -305,7 +305,7 @@ class FM(BaseEstimator, TransformerMixin):
                 scores = np.delete(scores, visited)
                 subsample = scores[np.random.choice(len(scores), size = 100, replace = False)]
                 # whether hit
-                subsample.append(true_item_score)
+                subsample = np.append(subsample, true_item_score)
                 sorted_scores = sorted(subsample, reverse=True)
 
 

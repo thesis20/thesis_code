@@ -325,7 +325,7 @@ class FM(BaseEstimator, TransformerMixin):
 
                 subsample = scores[np.random.choice(len(scores), size = 100, replace = False)]
                 # whether hit
-                subsample.append(true_item_score)
+                subsample = np.append(subsample, true_item_score)
                 sorted_scores = sorted(subsample, reverse=True)
 
                 label = []
