@@ -6,6 +6,7 @@ import numpy as np
 from concurrent.futures import ThreadPoolExecutor
 import sys
 import heapq
+import random
 def argmax_top_k(a, top_k=50):
     ele_idx = heapq.nlargest(top_k, zip(a, itertools.count()))
     return np.array([idx for ele, idx in ele_idx], dtype=np.intc)
@@ -86,7 +87,7 @@ def eval_score_matrix_loo(score_matrix, test_items, top_k=50, thread_num=None):
 def subsample(item_list, num, test_item):
     items = []
     try:
-        items = np.random.sample(range(len(item_list)), num)
+        items = random.sample(range(len(item_list)), num)
     except ValueError:
         print('Sample size exceeded range size')
     return items
