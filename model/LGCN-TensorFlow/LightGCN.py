@@ -691,7 +691,7 @@ if __name__ == '__main__':
     *********************************************************
     Generate the Laplacian matrix, where each entry defines the decay factor (e.g., p_ui) between two connected nodes.
     """
-    plain_adj, norm_adj, mean_adj,pre_adj,csgcn_adj = data_generator.get_adj_mat()
+    plain_adj, norm_adj, mean_adj,pre_adj,csgcn_adj,rwalk = data_generator.get_adj_mat()
     if args.adj_type == 'plain':
         config['norm_adj'] = plain_adj
         print('use the plain adjacency matrix')
@@ -707,6 +707,9 @@ if __name__ == '__main__':
     elif args.adj_type=='csgcn':
         config['norm_adj']=csgcn_adj
         print('use the squared csgcn adjcency matrix')
+    elif args.adj_type=='rwalk':
+        config['norm_adj']=rwalk
+        print('use the random walk normalized adjcency matrix')
     else:
         config['norm_adj'] = mean_adj + sp.eye(mean_adj.shape[0])
         print('use the mean adjacency matrix')
