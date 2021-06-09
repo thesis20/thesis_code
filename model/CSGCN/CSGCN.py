@@ -21,11 +21,11 @@ step_size = 20
 
 cpus = [x.name for x in device_lib.list_local_devices() if x.device_type == 'CPU']
 
-class LightGCN(object):
+class CSGCN(object):
     def __init__(self, data_config, pretrain_data):
         # argument settings
         tf.set_random_seed(2021)
-        self.model_type = 'LightGCN'
+        self.model_type = 'CSGCN'
         self.adj_type = args.adj_type
         self.alg_type = args.alg_type
         self.eval_type = data_config['eval_type']
@@ -718,7 +718,7 @@ if __name__ == '__main__':
         pretrain_data = load_pretrained_data()
     else:
         pretrain_data = None
-    model = LightGCN(data_config=config, pretrain_data=pretrain_data)
+    model = CSGCN(data_config=config, pretrain_data=pretrain_data)
     
     """
     *********************************************************
