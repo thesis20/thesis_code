@@ -330,6 +330,7 @@ class Data(object):
             norm_adj_mat = sp.load_npz(self.path + prefix + '/s_norm_adj_mat.npz')
             mean_adj_mat = sp.load_npz(self.path + prefix + '/s_mean_adj_mat.npz')
             csgcn_adj_mat = sp.load_npz(self.path + prefix + '/s_csgcn_adj_mat.npz')
+            rwalk_adj_mat = sp.load_npz(self.path + prefix + '/s_rwalk_adj_mat.npz')
             print('already load adj matrix', adj_mat.shape, time() - t1)
 
         except Exception:
@@ -343,6 +344,7 @@ class Data(object):
         try:
             pre_adj_mat = sp.load_npz(self.path + prefix + '/s_pre_adj_mat.npz')
             csgcn_adj_mat = sp.load_npz(self.path + prefix + '/s_csgcn_adj_mat.npz')
+            rwalk_adj_mat = sp.load_npz(self.path + prefix + '/s_rwalk_adj_mat.npz')
         except Exception:
             adj_mat=adj_mat
             rowsum = np.array(adj_mat.sum(1))
@@ -350,16 +352,22 @@ class Data(object):
 
             d_inv[np.isinf(d_inv)] = 0.
             d_mat_inv = sp.diags(d_inv)
-            d_mat_sq_inv = sp.diags(np.sqrt(2)*d_inv)
+            d_mat_sq_inv = sp.diags(d_inv)
             csgcn_adj_mat = d_mat_sq_inv.dot(adj_mat)
             norm_adj = d_mat_inv.dot(adj_mat)
             norm_adj = norm_adj.dot(d_mat_inv)
+            
+            d_inv_rwalk = np.power(rowsum, float(-1.0)).flatten()
+            d_inv_rwalk[np.isinf(d_inv)] = 0.
+            d_mat_inv_rwalk = sp.diags(d_inv_rwalk)
+            rwalk_adj_mat = d_mat_inv_rwalk.dot(adj_mat)
             print('generate pre adjacency matrix.')
             pre_adj_mat = norm_adj.tocsr()
             sp.save_npz(self.path + prefix + '/s_pre_adj_mat.npz', norm_adj)
             sp.save_npz(self.path + prefix + '/s_csgcn_adj_mat.npz', csgcn_adj_mat)
+            sp.save_npz(self.path + prefix + '/s_rwalk_adj_mat.npz', rwalk_adj_mat)
 
-        return adj_mat, norm_adj_mat, mean_adj_mat,pre_adj_mat,csgcn_adj_mat
+        return adj_mat, norm_adj_mat, mean_adj_mat,pre_adj_mat,csgcn_adj_mat,rwalk_adj_mat
 
     def create_adj_mat(self):
         t1 = time()
